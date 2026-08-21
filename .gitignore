@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.pyo
+
+# Claude Code のローカルツール類（このプロジェクトの一部ではない）
+.agents/
+.claude/
+skills-lock.json
+generated-images/
+
+# OS
+Thumbs.db
+.DS_Store

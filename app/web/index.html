@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gallery → PDF Downloader</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- アイコンはSVGで持つ。絵文字はUIアイコンに使わない。 -->
+<svg class="sprite" aria-hidden="true" focusable="false">
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4m0-4h.01"/></symbol>
+  <symbol id="i-retry" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></symbol>
+  <symbol id="i-open" viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9 9h6v6H9z"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 17v5"/><path d="M9 10.8V4h6v6.8l2.5 3.2H6.5z"/></symbol>
+  <symbol id="i-min" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+  <symbol id="i-max" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/></symbol>
+  <symbol id="i-restore" viewBox="0 0 24 24"><rect x="4" y="8" width="12" height="12" rx="2"/><path d="M8 8V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M4 6h11M4 12h11M4 18h7"/><path d="m16 14 5 3-5 3z"/></symbol>
+  <symbol id="i-video" viewBox="0 0 24 24"><rect x="2" y="6" width="14" height="12" rx="2"/><path d="m16 12 6-4v8z"/></symbol>
+  <symbol id="i-audio" viewBox="0 0 24 24"><path d="M9 17V4l11-2v13"/><circle cx="6" cy="17" r="3"/><circle cx="17" cy="15" r="3"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></symbol>
+</svg>
+
+<!-- タイトルバーは自前。data-drag を付けた範囲を掴むとウィンドウが動く。
+     移動そのものは Windows に任せるので、移動中の通信は発生しない。 -->
+<header class="titlebar" id="titlebar">
+  <div class="brand" data-drag>
+    <span class="brand__mark" aria-hidden="true">PDF</span>
+    <h1 class="brand__name">Gallery <span aria-hidden="true">→</span><span class="sr-only">から</span> PDF</h1>
+  </div>
+
+  <div class="titlebar__grip" data-drag id="titlebar-grip"></div>
+
+  <div class="titlebar__actions">
+    <button type="button" class="wbtn wbtn--toggle" id="pin"
+            aria-pressed="false" aria-label="最前面に固定" title="最前面に固定">
+      <svg class="icon" aria-hidden="true"><use href="#i-pin"/></svg>
+    </button>
+    <button type="button" class="wbtn" id="open-settings"
+            aria-label="設定" title="設定">
+      <svg class="icon" aria-hidden="true"><use href="#i-settings"/></svg>
+    </button>
+    <span class="titlebar__sep" aria-hidden="true"></span>
+    <button type="button" class="wbtn" id="win-min"
+            aria-label="最小化" title="最小化">
+      <svg class="icon" aria-hidden="true"><use href="#i-min"/></svg>
+    </button>
+    <button type="button" class="wbtn" id="win-max"
+            aria-label="最大化" title="最大化">
+      <svg class="icon" aria-hidden="true"><use href="#i-max"/></svg>
+    </button>
+    <button type="button" class="wbtn wbtn--close" id="win-close"
+            aria-label="閉じる" title="閉じる">
+      <svg class="icon" aria-hidden="true"><use href="#i-x"/></svg>
+    </button>
+  </div>
+</header>
+
+<main class="main">
+  <section class="card controls" aria-label="取り込み">
+    <div class="controls__top">
+      <label class="watch" for="watch">
+        <input type="checkbox" id="watch" class="switch" checked
+               aria-describedby="watch-hint">
+        <span class="switch__track" aria-hidden="true"><span class="switch__knob"></span></span>
+        <span class="watch__text">
+          <span class="watch__title">クリップボード監視</span>
+          <span class="watch__hint" id="watch-hint">URLをコピーすると自動で追加</span>
+        </span>
+      </label>
+
+      <!-- 動画サイトのURLを拾ったとき、どちらで保存するか。作品ページ（PDF化）
+           には影響しない。 -->
+      <div class="kinds" id="kinds" role="group" aria-label="動画・音声の保存形式">
+        <button type="button" class="kind" data-kind="video" aria-pressed="true"
+                title="動画サイトのURLは動画として保存します">
+          <svg class="icon" aria-hidden="true"><use href="#i-video"/></svg>動画
+        </button>
+        <button type="button" class="kind" data-kind="audio" aria-pressed="false"
+                title="動画サイトのURLから音声だけを取り出して保存します">
+          <svg class="icon" aria-hidden="true"><use href="#i-audio"/></svg>音声
+        </button>
+      </div>
+
+      <!-- 再生リスト・チャンネルのURLの扱い。オフだと先頭の1本だけ。 -->
+      <button type="button" class="kind kind--flag" id="playlist-all" aria-pressed="false"
+              title="再生リスト・チャンネルのURLを全部ダウンロードします（オフなら先頭の1本だけ）">
+        <svg class="icon" aria-hidden="true"><use href="#i-list"/></svg>リスト全体
+      </button>
+    </div>
+
+    <!-- 保存先は種別ごとに別。3つ並べて、今どこへ入るのかを常に見せる。 -->
+    <div class="dests" id="dests" role="group" aria-label="保存先">
+      <div class="field">
+        <label class="field__label" for="output-dir">PDF</label>
+        <input class="input" id="output-dir" type="text" readonly aria-label="PDFの保存先">
+        <button type="button" class="btn" data-act="pick" data-dir="pdf"
+                aria-label="PDFの保存先を変更">変更</button>
+        <button type="button" class="btn" data-act="open" data-dir="pdf"
+                aria-label="PDFの保存先を開く">
+          <svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg>
+          開く
+        </button>
+      </div>
+
+      <div class="field">
+        <label class="field__label" for="video-dir">動画</label>
+        <input class="input" id="video-dir" type="text" readonly aria-label="動画の保存先">
+        <button type="button" class="btn" data-act="pick" data-dir="video"
+                aria-label="動画の保存先を変更">変更</button>
+        <button type="button" class="btn" data-act="open" data-dir="video"
+                aria-label="動画の保存先を開く">
+          <svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg>
+          開く
+        </button>
+      </div>
+
+      <div class="field">
+        <label class="field__label" for="audio-dir">音声</label>
+        <input class="input" id="audio-dir" type="text" readonly aria-label="音声の保存先">
+        <button type="button" class="btn" data-act="pick" data-dir="audio"
+                aria-label="音声の保存先を変更">変更</button>
+        <button type="button" class="btn" data-act="open" data-dir="audio"
+                aria-label="音声の保存先を開く">
+          <svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg>
+          開く
+        </button>
+      </div>
+    </div>
+
+    <form class="field" id="add-form">
+      <label class="field__label" for="url-input">URL</label>
+      <input class="input" id="url-input" type="text" autocomplete="off"
+             placeholder="作品URLを貼り付けて Enter（複数まとめて貼っても大丈夫です）">
+      <button type="submit" class="btn btn--primary">
+        <svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>
+        追加
+      </button>
+    </form>
+  </section>
+
+  <section class="queue" aria-labelledby="queue-heading">
+    <div class="queue__head">
+      <h2 class="queue__title" id="queue-heading">キュー</h2>
+      <span class="queue__count" id="queue-count"></span>
+      <div class="queue__actions">
+        <button type="button" class="btn btn--sm" id="start-all" hidden>待機中を開始</button>
+        <button type="button" class="btn btn--sm" id="retry-all" hidden>未完了を再試行</button>
+        <button type="button" class="btn btn--sm btn--ghost" id="clear-done" hidden>
+          終わった分を消す
+        </button>
+        <button type="button" class="btn btn--sm btn--ghost btn--icon" id="clear-all"
+                aria-label="キューをすべて削除" title="キューをすべて削除（進行中も中止して削除）"
+                hidden>
+          <svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="queue__body" id="queue-body">
+      <ul class="cards" id="cards" role="list"></ul>
+
+      <div class="empty" id="empty">
+        <div class="empty__mark" aria-hidden="true">
+          <svg class="icon icon--lg" aria-hidden="true"><use href="#i-file"/></svg>
+        </div>
+        <p class="empty__title">キューは空です</p>
+        <p class="empty__body">対応サイトの作品URLをコピーすると、ここに並びます</p>
+        <p class="empty__hint">hitomi.la · momon-ga.com · pixiv.net · 動画サイト（yt-dlp）</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="bottombar">
+  <button type="button" class="drawer__toggle" id="log-toggle"
+          aria-expanded="false" aria-controls="log">
+    <svg class="icon drawer__chevron" aria-hidden="true"><use href="#i-chevron"/></svg>
+    ログ
+    <span class="badge" id="log-badge" hidden></span>
+  </button>
+  <p class="status" id="status" role="status" aria-live="polite"></p>
+  <button type="button" class="btn btn--sm btn--ghost" id="log-clear" hidden>消去</button>
+  <pre class="log" id="log" tabindex="0" aria-label="ログ"></pre>
+</footer>
+
+<div class="dropzone" id="dropzone" aria-hidden="true">
+  <div class="dropzone__inner">
+    <svg class="icon icon--lg" aria-hidden="true"><use href="#i-plus"/></svg>
+    ドロップしてキューに追加
+  </div>
+</div>
+
+<div class="toasts" id="toasts" role="region" aria-label="通知" aria-live="polite"></div>
+
+<dialog class="modal" id="settings">
+  <form method="dialog" class="modal__form" id="settings-form">
+    <h2 class="modal__title">設定</h2>
+
+    <div class="tabs" role="tablist">
+      <button type="button" class="tab" role="tab" aria-selected="true" data-tab="save">保存</button>
+      <button type="button" class="tab" role="tab" aria-selected="false" data-tab="dl">ダウンロード</button>
+      <button type="button" class="tab" role="tab" aria-selected="false" data-tab="media">メディア</button>
+      <button type="button" class="tab" role="tab" aria-selected="false" data-tab="site">サイト</button>
+    </div>
+
+    <div class="panel" data-panel="save">
+      <label class="row"><span>保存先フォルダ</span>
+        <input class="input" name="output_dir" type="text"></label>
+      <label class="row row--check">
+        <input type="checkbox" name="site_subfolder"><span>サイトごとにサブフォルダを作る</span>
+      </label>
+      <label class="row"><span>ファイル名</span>
+        <input class="input" name="filename_template" type="text"></label>
+      <p class="hint">使えるトークン: {title} {artist} {group} {series} {id} {site} {pages} {lang}</p>
+      <label class="row"><span>ファイル名の上限</span>
+        <input class="input input--num" name="filename_max_len" type="number" min="40" max="200"></label>
+      <label class="row row--check">
+        <input type="checkbox" name="keep_images"><span>PDFと一緒に元画像もフォルダに残す</span>
+      </label>
+    </div>
+
+    <div class="panel" data-panel="dl" hidden>
+      <label class="row"><span>同時ダウンロード作品数</span>
+        <input class="input input--num" name="gallery_workers" type="number" min="1" max="6"></label>
+      <label class="row"><span>1作品あたりの画像並列数</span>
+        <input class="input input--num" name="image_workers" type="number" min="1" max="16"></label>
+      <p class="hint">並列数はサイトごとの上限で自動的に抑えられます（pixiv は 2 並列・1秒間隔）。</p>
+      <label class="row"><span>リトライ回数</span>
+        <input class="input input--num" name="retries" type="number" min="1" max="10"></label>
+      <label class="row"><span>タイムアウト（秒）</span>
+        <input class="input input--num" name="timeout" type="number" min="5" max="180"></label>
+      <label class="row"><span>PDF画質（JPEG）</span>
+        <input class="input input--num" name="jpeg_quality" type="number" min="50" max="100"></label>
+      <label class="row row--check">
+        <input type="checkbox" name="skip_downloaded"><span>履歴にある作品は再ダウンロードしない</span>
+      </label>
+      <label class="row row--check">
+        <input type="checkbox" name="auto_start"><span>URLを検出したら自動で開始する</span>
+      </label>
+      <label class="row"><span>クリップボードで除外するドメイン</span>
+        <input class="input" name="clipboard_blacklist" type="text"
+               aria-label="クリップボードで除外するドメイン"></label>
+      <p class="hint">
+        コピーしたURLがどのサイトにも一致しない場合、yt-dlpの汎用抽出器で取得を試みます。
+        ここに列挙したドメイン(カンマ区切り、完全一致。サブドメインは別ドメインとして
+        区別するので、必要なら www.example.com のように個別に書きます)はその対象から
+        外します。手動でURLを貼り付けたときはこの除外リストの影響を受けません。
+        汎用抽出器での取得が実際に失敗すると、そのドメインは自動でここに追加されます。
+      </p>
+      <label class="row"><span>クリップボードで信頼するドメイン</span>
+        <input class="input" name="clipboard_whitelist" type="text"
+               aria-label="クリップボードで信頼するドメイン"></label>
+      <p class="hint">
+        汎用抽出器での取得に実際に成功したドメインが自動で溜まります。ここにあるドメインは
+        上の除外リストに載っていても優先して拾います。
+      </p>
+      <label class="row row--check">
+        <input type="checkbox" name="notify"><span>完了時に通知を表示する</span>
+      </label>
+      <label class="row row--check">
+        <input type="checkbox" name="minimize_to_tray"><span>閉じるボタンでタスクトレイに最小化する</span>
+      </label>
+    </div>
+
+    <div class="panel" data-panel="media" hidden>
+      <div class="row"><span>動画の保存先</span>
+        <input class="input" name="video_dir" type="text" aria-label="動画の保存先">
+        <button type="button" class="btn" data-pick="video">参照</button>
+      </div>
+      <div class="row"><span>音声の保存先</span>
+        <input class="input" name="audio_dir" type="text" aria-label="音声の保存先">
+        <button type="button" class="btn" data-pick="audio">参照</button>
+      </div>
+      <p class="hint">PDFとは別のフォルダに保存します。空欄にすると既定の場所に戻ります。</p>
+
+      <div class="row"><span>Cookie ファイル（任意）</span>
+        <input class="input" name="media_cookies_file" type="text" aria-label="動画・音声のCookieファイル">
+        <button type="button" class="btn" data-pick="cookies">参照</button>
+      </div>
+      <p class="hint">
+        年齢制限・非公開設定などログインが必要な動画（X/Twitter など）の取得に使います。
+        ブラウザの拡張機能（例: Get cookies.txt LOCALLY）でエクスポートした cookies.txt を指定してください。
+      </p>
+
+      <label class="row"><span>動画の画質</span>
+        <select class="input" name="video_quality">
+          <option value="best">最高画質</option>
+          <option value="1080">1080p まで</option>
+          <option value="720">720p まで</option>
+          <option value="480">480p まで</option>
+        </select></label>
+      <label class="row"><span>音声の形式</span>
+        <select class="input" name="audio_format">
+          <option value="mp3">MP3（互換性重視）</option>
+          <option value="m4a">M4A（AAC）</option>
+          <option value="opus">Opus（軽量・高音質）</option>
+        </select></label>
+      <label class="row"><span>音声のビットレート</span>
+        <input class="input input--num" name="audio_bitrate" type="number"
+               min="64" max="320" step="32"></label>
+      <label class="row"><span>同時ダウンロード数</span>
+        <input class="input input--num" name="video_workers" type="number" min="1" max="6"></label>
+      <p class="hint">
+        再生リストのURLでも1本だけ取得します。動画の結合と音声への変換には
+        ffmpeg が必要です（<code>winget install Gyan.FFmpeg</code>）。無い場合は結合の要らない
+        形式だけを取得し、音声の取り出しは失敗します。変換中は中止できません。
+      </p>
+    </div>
+
+    <div class="panel" data-panel="site" hidden>
+      <label class="row"><span>hitomi 画像形式</span>
+        <select class="input" name="prefer_format">
+          <option value="avif">AVIF（軽量・高画質）</option>
+          <option value="webp">WebP（互換性重視）</option>
+        </select></label>
+      <p class="hint">指定形式が無いページは自動でもう一方にフォールバックします。</p>
+      <label class="row"><span>pixiv PHPSESSID</span>
+        <input class="input" name="pixiv_cookie" type="password" autocomplete="off"></label>
+      <p class="hint">
+        R-18 作品や非公開作品の取得に必要です。ブラウザで pixiv にログインした状態で
+        DevTools → Application → Cookies から PHPSESSID の値をコピーしてください。
+        うごイラは PDF 化できないためスキップされます。
+      </p>
+    </div>
+
+    <div class="modal__foot">
+      <button type="button" class="btn" id="settings-cancel">キャンセル</button>
+      <button type="submit" class="btn btn--primary">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="app.js"></script>
+</body>
+</html>
