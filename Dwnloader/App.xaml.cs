@@ -2,6 +2,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Threading;
 using Dwnloader.Core;
+using Velopack;
 
 namespace Dwnloader;
 
@@ -14,11 +15,25 @@ public partial class App : Application
     private Session? _session;
     private TrayIcon? _tray;
     private MainWindow? _window;
+    private UpdateService? _updates;
     private bool _shuttingDown;
 
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        // インストール・更新・アンインストールの後始末は、他の何よりも先に行う。
+        // Velopack は本体を --veloapp-* 付きで呼び直して処理させるため、
+        // 多重起動の判定より後ろに置くと「2つ目の起動」とみなされて素通りし、
+        // ショートカットが作られない・消えないという形で壊れる。
+        try
+        {
+            VelopackApp.Build().Run();
+        }
+        catch (Exception ex)
+        {
+            LogCrash(ex);       // 更新まわりの失敗でアプリを起動不能にしない
+        }
 
         // 自己テストは画面を出さずに走らせる（移植の突き合わせ用）
         if (e.Args.Any(a => a.Equals("--selftest", StringComparison.OrdinalIgnoreCase)))
@@ -33,6 +48,18 @@ public partial class App : Application
         {
             int code = Compare.Run();
             Shutdown(code);
+            return;
+        }
+
+        bool checkUpdate = e.Args.Any(a => a.Equals("--checkupdate", StringComparison.OrdinalIgnoreCase));
+        bool applyUpdate = e.Args.Any(a => a.Equals("--applyupdate", StringComparison.OrdinalIgnoreCase));
+        if (checkUpdate || applyUpdate)
+        {
+            _ = Task.Run(async () =>
+            {
+                int code = await Compare.RunUpdateAsync(applyUpdate).ConfigureAwait(false);
+                Dispatcher.Invoke(() => Shutdown(code));
+            });
             return;
         }
 
@@ -100,8 +127,10 @@ public partial class App : Application
             onToggleWatch: () => Dispatcher.Invoke(() => _session?.ToggleWatch()),
             onQuit: () => Dispatcher.Invoke(QuitAll));
 
+        _updates = new UpdateService();
+
         _window = new MainWindow();
-        _window.Attach(_session, _tray);
+        _window.Attach(_session, _tray, _updates);
         _window.Closed += (_, _) => QuitAll();
 
         _guard.Listen(() => Dispatcher.Invoke(() => _window?.ShowFromTray()));

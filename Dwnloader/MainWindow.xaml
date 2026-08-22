@@ -115,6 +115,9 @@
         <Border DockPanel.Dock="Bottom" Background="{StaticResource Panel}"
                 BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Padding="10,6">
             <DockPanel>
+                <Button DockPanel.Dock="Right" x:Name="UpdateBtn" Content="更新"
+                        Click="Update_Click" Margin="6,0,0,0" Visibility="Collapsed"
+                        Background="#FF2E7D5B" BorderBrush="#FF3E9E75"/>
                 <Button DockPanel.Dock="Right" Content="ログ" Click="ToggleLog_Click" Margin="6,0,0,0"/>
                 <Button DockPanel.Dock="Right" Content="速度" Click="ToggleSpeed_Click" Margin="6,0,0,0"/>
                 <TextBlock DockPanel.Dock="Right" x:Name="SpeedText" Text=""

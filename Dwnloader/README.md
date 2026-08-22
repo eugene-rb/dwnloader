@@ -30,10 +30,43 @@ Python 版には「大量の URL を追加すると GUI が固まり、ウィン
 | ウィンドウ移動 | 成功（指定どおりの位置へ動く） |
 | キューへの取り込み | 300 / 300 件（取りこぼしなし） |
 
+## 導入
+
+**[リリースページ](https://github.com/eugene-rb/dwnloader/releases/latest)から
+`Dwnloader-win-Setup.exe` を落として実行**するのがいちばん簡単です。
+.NET 8 ランタイムが無ければインストーラが一緒に入れます。デスクトップと
+スタートメニューにショートカットが作られ、以後は自動更新が効きます。
+
+インストール先は `%LOCALAPPDATA%\Dwnloader\`（管理者権限は要りません）。
+VS Code や Discord と同じ形式で、更新のたびに管理者確認が出ないようにするためです。
+
+> 署名していないため、初回は SmartScreen が「WindowsによってPCが保護されました」と
+> 出します。「詳細情報」→「実行」で進めてください。
+
+インストーラを使わない場合は `Dwnloader-win-Portable.zip` を展開しても動きます
+（そのときは自動更新は効きません）。
+
+## 自動更新
+
+起動から5秒後に GitHub のリリースを静かに確認し、新しい版があるときだけ
+下部バーに「更新」ボタンを出します。押すと取得して再起動します。
+設定 →「その他」→「今すぐ確認」からも確認できます。
+
+更新は**必ず人が押したときだけ**行います。勝手に適用しません。
+進行中のダウンロードがあるときは、終わるか中止するまで適用を断ります
+（更新はアプリを一度終了させるため、途中のファイルが失われるからです）。
+
+コマンドラインからも扱えます。
+
+```
+Dwnloader.exe --checkupdate   # 新しい版があるか調べるだけ
+Dwnloader.exe --applyupdate   # 取得して適用し、再起動する
+```
+
 ## 動かすのに要るもの
 
 - Windows 10 / 11
-- [.NET 8 デスクトップ ランタイム](https://dotnet.microsoft.com/download/dotnet/8.0)
+- .NET 8 デスクトップ ランタイム（インストーラが自動で入れます）
 - **yt-dlp**（動画・音声を取得する場合）
   `winget install yt-dlp.yt-dlp` または `pip install yt-dlp`
   実行ファイル・`python -m yt_dlp` のどちらでも自動で見つける。
@@ -50,9 +83,23 @@ NuGet の Magick.NET と PdfSharp が実行ファイルに同梱される。
 cd Dwnloader
 dotnet build                 # デバッグビルド
 dotnet run                   # 起動
-
-dotnet publish -c Release    # 配布用（bin/Release/net8.0-windows/publish/）
 ```
+
+配布物（インストーラ・自動更新用のパッケージ）を作る:
+
+```
+dotnet publish -c Release -r win-x64 --self-contained false -o ./publish-win-x64
+
+vpk pack --packId Dwnloader --packVersion <版> --packDir publish-win-x64   --mainExe Dwnloader.exe --packTitle "Gallery to PDF Downloader"   --packAuthors "eugene-rb" --icon app.ico --framework net8.0.0-x64-desktop   -o Releases
+```
+
+`vpk` は [Velopack](https://velopack.io) の CLI（`dotnet tool install -g vpk`）。
+`Releases/` にインストーラ・更新用パッケージ・目録が出るので、その中身を
+GitHub のリリースにそのまま添付します（自動更新はこの目録を読みます）。
+
+**csproj の `<Version>` と `--packVersion` は必ず同じ値にすること。**
+題名に出す版番号はアセンブリから読んでいるため、ずれると更新後も古い版を
+表示し続けます。
 
 ### 移植が正しいかを確かめる
 
@@ -69,6 +116,10 @@ Dwnloader.exe --media <URL>  # yt-dlp を実際に動かして1本落とす
 Dwnloader.exe --speedtest    # 速度計の計算（同時加算・上限・0への復帰）
 ```
 
+自動更新は2つの版を公開しないと試せません。手元で通すには、環境変数
+`DWNLOADER_UPDATE_SOURCE` に `Releases/` のようなフォルダを指すと、
+GitHub の代わりにそこを見ます。
+
 `--selftest` は純粋な関数しか触らない。そこを通っただけでは、
 実物の `gg.js` が読めるか・AVIF が本当に復号できるか・yt-dlp との
 やり取りが成立するかは分からないので、残り3つを用意してある。
@@ -80,6 +131,7 @@ Dwnloader.exe --speedtest    # 速度計の計算（同時加算・上限・0へ
 | `--live` | 実サーバの `gg.js` からの画像URL組み立て、AVIF/WebP の実復号、PDF が `/DCTDecode` で無再エンコードになること |
 | `--media <URL>` | yt-dlp の起動、題名・進捗の解析、保存先の受け取り |
 | `--speedtest` | 速度計が実測と合うこと、複数スレッドから同時に足しても数が合うこと |
+| `--checkupdate` / `--applyupdate` | 更新の検出・取得・適用・再起動が通ること |
 
 ## 使い方
 
@@ -175,6 +227,7 @@ Sites/      hitomi / momon-ga / pixiv のアダプタ
 Jobs/       ダウンロード（画像・yt-dlp）、画像変換、PDF 生成、同時実行の制御
 Session.cs  キューの状態とふるまい（描画は持たない）
 SpeedGraph.cs  速度グラフの描画（OnRender で直接描く）
+UpdateService.cs  GitHub のリリースを見た自動更新（Velopack）
 *.xaml      画面
 SelfTest.cs / Compare.cs   移植の突き合わせ
 ```

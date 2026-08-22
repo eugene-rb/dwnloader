@@ -10,6 +10,8 @@ public partial class MainWindow : Window
 {
     private Session? _session;
     private TrayIcon? _tray;
+    private UpdateService? _updates;
+    private bool _updateBusy;
     private bool _quitting;
     private bool _suppressToggleEvents = true;
 
@@ -19,10 +21,11 @@ public partial class MainWindow : Window
         Title = AppInfo.WindowTitle;
     }
 
-    public void Attach(Session session, TrayIcon tray)
+    public void Attach(Session session, TrayIcon tray, UpdateService? updates = null)
     {
         _session = session;
         _tray = tray;
+        _updates = updates;
 
         EntryList.ItemsSource = session.Entries;
 
@@ -50,6 +53,97 @@ public partial class MainWindow : Window
         _suppressToggleEvents = false;
 
         SyncState();
+        _ = CheckUpdatesQuietlyAsync();
+    }
+
+    // ============================================================== 更新
+
+    /// <summary>
+    /// 起動時に静かに確認する。見つかったときだけ「更新」ボタンを出す。
+    /// 見つからなかった場合や通信できなかった場合は何も言わない
+    /// （起動のたびに更新の話を持ち出さない）。
+    /// </summary>
+    private async Task CheckUpdatesQuietlyAsync()
+    {
+        if (_updates is null || !_updates.IsSupported) return;
+
+        // 起動直後は復元や走査で忙しい。少し待ってから確認する。
+        await Task.Delay(TimeSpan.FromSeconds(5));
+        try
+        {
+            var found = await _updates.CheckAsync();
+            if (found is null) return;
+
+            UpdateBtn.Content = $"v{found} に更新";
+            UpdateBtn.ToolTip = $"新しい版 v{found} が公開されています（現在 v{AppInfo.Version}）";
+            UpdateBtn.Visibility = Visibility.Visible;
+            _session?.Log("info", $"新しい版 v{found} が公開されています。"
+                                  + "下の「更新」から適用できます。");
+        }
+        catch (Exception e)
+        {
+            // 通信できないだけで騒がない。ログにだけ残す。
+            _session?.Log("info", $"更新の確認をとばしました: {e.Message}");
+        }
+    }
+
+    private async void Update_Click(object sender, RoutedEventArgs e)
+    {
+        if (_updates is null || _session is null || _updateBusy) return;
+
+        // 適用はプロセスの入れ替えなので、走っているものがあると道連れになる。
+        int running = _session.RunningCount();
+        if (running > 0)
+        {
+            MessageBox.Show(this,
+                $"{running} 件が進行中です。終わるか中止してから更新してください。"
+                + Environment.NewLine
+                + "（更新はアプリを一度終了させるため、途中のダウンロードは失われます）",
+                "更新できません", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var version = _updates.AvailableVersion ?? "新しい版";
+        var answer = MessageBox.Show(this,
+            $"v{version} に更新します。ダウンロードのあとアプリを再起動します。",
+            "更新", MessageBoxButton.OKCancel, MessageBoxImage.Question);
+        if (answer != MessageBoxResult.OK) return;
+
+        _updateBusy = true;
+        UpdateBtn.IsEnabled = false;
+        try
+        {
+            UpdateBtn.Content = "取得中… 0%";
+            await _updates.DownloadAsync(percent => Dispatcher.InvokeAsync(
+                () => UpdateBtn.Content = $"取得中… {percent}%",
+                System.Windows.Threading.DispatcherPriority.Background));
+
+            // 落としている間に何か走り出していないか、直前にもう一度見る
+            if (_session.RunningCount() > 0)
+            {
+                MessageBox.Show(this,
+                    "取得中に新しいダウンロードが始まりました。終わってから「更新」を押し直してください。",
+                    "更新を中断しました", MessageBoxButton.OK, MessageBoxImage.Warning);
+                UpdateBtn.Content = "更新";
+                return;
+            }
+
+            // 書きかけの設定・履歴・キューを確実に書き出してから入れ替える
+            _session.Shutdown();
+            _tray?.Dispose();
+            _updates.ApplyAndRestart();     // ここから戻ってこない
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"更新できませんでした: {ex.Message}",
+                            "更新", MessageBoxButton.OK, MessageBoxImage.Error);
+            UpdateBtn.Content = "更新";
+        }
+        finally
+        {
+            _updateBusy = false;
+            UpdateBtn.IsEnabled = true;
+        }
     }
 
     // ============================================================== 状態の反映
@@ -255,7 +349,7 @@ public partial class MainWindow : Window
     private void Settings_Click(object sender, RoutedEventArgs e)
     {
         if (_session is null) return;
-        var dialog = new SettingsWindow(_session.Settings) { Owner = this };
+        var dialog = new SettingsWindow(_session.Settings, _updates) { Owner = this };
         if (dialog.ShowDialog() == true && dialog.Result is { } values)
         {
             _session.SaveSettings(values);

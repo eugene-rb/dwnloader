@@ -386,6 +386,61 @@ public static class Compare
         return failed == 0 ? 0 : 1;
     }
 
+
+    /// <summary>
+    /// 更新の確認・適用をコマンドラインから行う（`--checkupdate` / `--applyupdate`）。
+    /// 画面を操作せずに一連の流れを確かめられるようにしてある。
+    /// </summary>
+    public static async Task<int> RunUpdateAsync(bool apply)
+    {
+        SelfTest.EnsureConsole();
+        Console.OutputEncoding = Encoding.UTF8;
+        Console.WriteLine("=== 更新の確認 ===");
+        Console.WriteLine($"現在の版: v{AppInfo.Version}");
+
+        var source = Environment.GetEnvironmentVariable("DWNLOADER_UPDATE_SOURCE");
+        Console.WriteLine($"入手元  : {(string.IsNullOrWhiteSpace(source) ? AppInfo.RepositoryUrl : source)}");
+
+        var service = new UpdateService();
+        if (!service.IsSupported)
+        {
+            Console.WriteLine("インストーラ経由ではないため更新できません。");
+            Console.WriteLine(UpdateService.UnsupportedReason);
+            return 2;
+        }
+
+        string? found;
+        try
+        {
+            found = await service.CheckAsync().ConfigureAwait(false);
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine($"確認できませんでした: {e.GetType().Name}: {e.Message}");
+            return 1;
+        }
+
+        if (found is null)
+        {
+            Console.WriteLine("最新です。");
+            return 0;
+        }
+
+        Console.WriteLine($"新しい版: v{found}");
+        if (!apply) return 0;
+
+        Console.WriteLine("取得しています…");
+        int last = -1;
+        await service.DownloadAsync(p =>
+        {
+            if (p / 10 != last / 10) { last = p; Console.WriteLine($"  {p}%"); }
+        }).ConfigureAwait(false);
+
+        Console.WriteLine("適用して再起動します。");
+        service.ApplyAndRestart();      // ここから戻ってこない
+        return 0;
+    }
+
     /// <summary>
     /// Python の datetime.isoformat() と同じ書き方に揃える。
     /// 元の文字列に時差が書かれていたときだけ、その時差を付けて出す

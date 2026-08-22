@@ -2,3 +2,6 @@ bin/
 obj/
 publish-win-x64/
 *.zip
+publish-v211/
+Releases/
+Releases-install/

@@ -16,6 +16,7 @@
     <AssemblyName>Dwnloader</AssemblyName>
     <RootNamespace>Dwnloader</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>app.ico</ApplicationIcon>
     <!-- 起動時のコンソール窓を出さない。selftest のときだけ自前で確保する。 -->
     <DisableWinExeOutputInference>true</DisableWinExeOutputInference>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
@@ -24,6 +25,9 @@
          このアプリの主UIは WPF なのでマニフェストで指定するのが正しい。
          トレイアイコンのためだけに WinForms を有効にしている。 -->
     <NoWarn>$(NoWarn);WFAC010</NoWarn>
+    <!-- 表示するバージョンはここ1か所に置く。vpk pack へ渡す packVersion と
+         同じ値にすること（更新後に題名だけ古いまま、を防ぐ）。 -->
+    <Version>2.1.0</Version>
   </PropertyGroup>
 
   <ItemGroup>
@@ -33,6 +37,7 @@
     <!-- JPEG を再エンコードせず PDF へ埋め込む（/DCTDecode）。Python 版の
          img2pdf と同じ性質で、画質を落とさず速い。 -->
     <PackageReference Include="PdfSharp" Version="6.2.1" />
+    <PackageReference Include="Velopack" Version="1.2.0" />
   </ItemGroup>
 
 </Project>

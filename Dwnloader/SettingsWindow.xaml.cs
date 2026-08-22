@@ -9,15 +9,44 @@ namespace Dwnloader;
 public partial class SettingsWindow : Window
 {
     private readonly SettingsData _original;
+    private readonly UpdateService? _updates;
 
     /// <summary>保存が押されたときだけ入る。押されなければ null のまま。</summary>
     public SettingsData? Result { get; private set; }
 
-    public SettingsWindow(SettingsData current)
+    public SettingsWindow(SettingsData current, UpdateService? updates = null)
     {
         InitializeComponent();
         _original = current.Clone();
+        _updates = updates;
         Load(_original);
+
+        UpdateStatus.Text = updates is { IsSupported: true }
+            ? $"現在 v{AppInfo.Version}"
+            : UpdateService.UnsupportedReason;
+    }
+
+    /// <summary>手で更新を確認する。見つかったら本体の「更新」ボタンから適用する。</summary>
+    private async void CheckUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        if (_updates is null || !_updates.IsSupported)
+        {
+            UpdateStatus.Text = UpdateService.UnsupportedReason;
+            return;
+        }
+
+        UpdateStatus.Text = "確認しています…";
+        try
+        {
+            var found = await _updates.CheckAsync();
+            UpdateStatus.Text = found is null
+                ? $"最新です（v{AppInfo.Version}）"
+                : $"v{found} が利用できます。この画面を閉じて、下の「更新」を押してください。";
+        }
+        catch (Exception ex)
+        {
+            UpdateStatus.Text = $"確認できませんでした: {ex.Message}";
+        }
     }
 
     private void Load(SettingsData s)
