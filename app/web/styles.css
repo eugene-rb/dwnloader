@@ -5,32 +5,32 @@
    ========================================================================= */
 :root {
   /* 面は「奥から手前へ」の3層。素材の重さで階層を示す */
-  --bg:          #0f1116;
-  --sunken:      #0a0c10;
-  --surface:     #171a21;
-  --surface-hi:  #1e222b;
-  --surface-hi2: #262b36;
+  --bg:          #070a12;
+  --sunken:      #060912;
+  --surface:     rgb(17 24 39 / .82);
+  --surface-hi:  rgb(23 34 54 / .90);
+  --surface-hi2: rgb(30 45 76 / .94);
 
   --edge:         #272c37;   /* 面の上端。光が縁に当たっている見え方 */
   --border:       #232833;   /* 面と面の区切り（装飾） */
-  --border-2:     #333a49;
+  --border-2:     #40547c;
   /* 操作できる部品の輪郭。どの面に置いても 3:1 を満たす明るさにしてある。
      押せる物の輪郭が見えないと、そこに何があるか分からない。 */
-  --control-edge: #667492;
+  --control-edge: #47648f;
 
-  --text:        #eceef4;
-  --muted:       #a3accd;
+  --text:        #f4f7ff;
+  --muted:       #b3c0dd;
   --faint:       #8b94a8;    /* 本文比 4.5:1 以上を満たす最も暗い灰 */
 
-  --accent:      #7d97ff;
-  --accent-2:    #93a8ff;
-  --accent-soft: #232b4d;
-  --on-accent:   #0b0e15;
+  --accent:      #38d5ff;
+  --accent-2:    #ff4fd8;
+  --accent-soft: rgb(56 213 255 / .14);
+  --on-accent:   #061018;
 
-  --success: #57d3aa;
-  --warning: #edbe70;
-  --danger:  #f5817d;
-  --danger-soft: #3a2229;
+  --success: #4dffb2;
+  --warning: #ffd166;
+  --danger:  #ff6b8b;
+  --danger-soft: rgb(255 107 139 / .14);
 
   --site-hitomi:  #8f9cff;
   --site-momonga: #eb9a6d;
@@ -76,7 +76,10 @@ html, body {
 body {
   display: grid;
   grid-template-rows: auto 1fr auto;
-  background: var(--bg);
+  background:
+    radial-gradient(circle at 14% -10%, rgb(56 213 255 / .22), transparent 30%),
+    radial-gradient(circle at 86% 4%, rgb(255 79 216 / .16), transparent 32%),
+    linear-gradient(135deg, #070a12 0%, #0c1224 48%, #120a20 100%);
   color: var(--text);
   font: 400 13px/1.55 var(--font);
   letter-spacing: 0;
@@ -123,7 +126,9 @@ body {
   gap: var(--sp-2);
   height: 38px;
   padding: 0 0 0 var(--sp-3);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid rgb(56 213 255 / .16);
+  background: rgb(7 10 18 / .72);
+  backdrop-filter: blur(18px);
   user-select: none;
 }
 
@@ -166,7 +171,7 @@ body {
   display: grid; place-items: center;
   width: 22px; height: 22px; flex: none;
   border-radius: var(--r-sm);
-  background: linear-gradient(135deg, var(--accent), #a06dff);
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
   color: var(--on-accent);
   font-size: 8px; font-weight: 700; letter-spacing: .02em;
 }
@@ -240,7 +245,7 @@ body {
   width: 40px; height: 23px; flex: none;
   border: 1px solid var(--control-edge);
   border-radius: var(--r-pill);
-  background: var(--surface-hi);
+  background: linear-gradient(180deg, rgb(20 32 51 / .96), rgb(12 18 32 / .96));
   transition: background var(--d-hover) var(--ease-out),
               border-color var(--d-hover) var(--ease-out);
 }
@@ -276,16 +281,20 @@ body {
               color var(--d-hover) var(--ease-out),
               scale var(--d-press) var(--ease-out);
 }
-.btn:hover { background: var(--surface-hi2); border-color: #8290ad; }
+.btn:hover {
+  background: linear-gradient(180deg, rgb(29 49 84 / .98), rgb(14 24 45 / .98));
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgb(56 213 255 / .10), 0 10px 24px rgb(56 213 255 / .10);
+}
 /* 押した瞬間に縮む。離してから反応すると「聞こえていない」感じになる */
 .btn:active { scale: .97; }
 .btn:disabled { color: var(--faint); border-color: var(--border); cursor: not-allowed; scale: 1; }
 
 .btn--primary {
-  background: var(--accent); border-color: var(--accent);
+  background: linear-gradient(135deg, var(--accent), var(--accent-2)); border-color: var(--accent);
   color: var(--on-accent); font-weight: 600;
 }
-.btn--primary:hover { background: var(--accent-2); border-color: var(--accent-2); }
+.btn--primary:hover { background: linear-gradient(135deg, #72e3ff, #ff7be2); border-color: #72e3ff; }
 
 .btn--ghost { background: transparent; border-color: transparent; color: var(--muted); }
 .btn--ghost:hover { background: var(--surface-hi); border-color: transparent; color: var(--text); }
@@ -315,6 +324,8 @@ body {
   border-top-color: var(--edge);   /* 上端だけ明るくして面に厚みを出す */
   border-radius: var(--r-lg);
   background: var(--surface);
+  box-shadow: 0 18px 44px rgb(0 0 0 / .28), inset 0 1px 0 rgb(255 255 255 / .04);
+  backdrop-filter: blur(18px);
 }
 
 .controls { display: grid; gap: var(--sp-2); padding: var(--sp-3); }
@@ -408,20 +419,24 @@ select.input { cursor: pointer; }
   padding: var(--sp-3);
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
-  background: var(--surface-hi);
+  background: linear-gradient(180deg, rgb(23 34 54 / .94), rgb(13 19 34 / .94));
   cursor: pointer;
   overflow: hidden;
   transition: background var(--d-hover) var(--ease-out),
               border-color var(--d-hover) var(--ease-out);
 }
-.jc:hover { background: var(--surface-hi2); border-color: var(--border-2); }
+.jc:hover {
+  background: linear-gradient(180deg, rgb(30 45 76 / .96), rgb(16 24 43 / .96));
+  border-color: rgb(56 213 255 / .52);
+  box-shadow: 0 14px 34px rgb(0 0 0 / .26), 0 0 0 1px rgb(56 213 255 / .08);
+}
 
 /* 進行中は左端に色帯。一覧の中でどれが動いているか一目で分かる */
 .jc--active::before {
   content: "";
   position: absolute; inset: 0 auto 0 0;
   width: 3px;
-  background: var(--accent);
+  background: linear-gradient(180deg, var(--accent), var(--accent-2));
 }
 .jc--PARTIAL::before, .jc--BUILDING::before { background: var(--warning); }
 
@@ -446,7 +461,7 @@ select.input { cursor: pointer; }
   position: relative;
   width: 62px; height: 80px;
   border-radius: var(--r-sm);
-  background: var(--sunken);
+  background: rgb(6 9 18 / .96);
   overflow: hidden;
 }
 .jc__thumb img {
@@ -497,7 +512,7 @@ select.input { cursor: pointer; }
 .bar__fill {
   height: 100%;
   width: 100%;
-  background: var(--accent);
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
   transform: scaleX(0);
   transform-origin: left center;
   transition: transform 190ms var(--ease-out), background var(--d-hover) linear;

@@ -5,7 +5,7 @@
         Title="Gallery → PDF Downloader"
         Height="760" Width="1040" MinHeight="360" MinWidth="560"
         WindowStartupLocation="CenterScreen"
-        Background="#FF14161C" Foreground="#FFE6E8EF"
+        Background="#FF070A12" Foreground="#FFF4F7FF"
         UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
 
     <!--
@@ -16,23 +16,32 @@
 
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
-        <SolidColorBrush x:Key="Panel" Color="#FF1B1E27"/>
-        <SolidColorBrush x:Key="Line" Color="#FF2A2E3B"/>
-        <SolidColorBrush x:Key="Muted" Color="#FF9AA1B4"/>
-        <SolidColorBrush x:Key="Accent" Color="#FF6D8CFF"/>
+        <LinearGradientBrush x:Key="AppBg" StartPoint="0,0" EndPoint="1,1">
+            <GradientStop Color="#FF070A12" Offset="0"/>
+            <GradientStop Color="#FF0C1224" Offset="0.48"/>
+            <GradientStop Color="#FF120A20" Offset="1"/>
+        </LinearGradientBrush>
+        <SolidColorBrush x:Key="Panel" Color="#CC111827"/>
+        <SolidColorBrush x:Key="PanelHi" Color="#E6172236"/>
+        <SolidColorBrush x:Key="PanelHover" Color="#F01E2D4C"/>
+        <SolidColorBrush x:Key="Line" Color="#FF293752"/>
+        <SolidColorBrush x:Key="LineHot" Color="#FF38D5FF"/>
+        <SolidColorBrush x:Key="Muted" Color="#FF9AA8C7"/>
+        <SolidColorBrush x:Key="Accent" Color="#FF38D5FF"/>
+        <SolidColorBrush x:Key="Success" Color="#FF4DFFB2"/>
 
         <Style TargetType="Button">
-            <Setter Property="Padding" Value="10,5"/>
-            <Setter Property="Margin" Value="0,0,6,0"/>
-            <Setter Property="Background" Value="#FF262B38"/>
-            <Setter Property="Foreground" Value="#FFE6E8EF"/>
+            <Setter Property="Padding" Value="12,6"/>
+            <Setter Property="Margin" Value="0,0,7,0"/>
+            <Setter Property="Background" Value="#FF142033"/>
+            <Setter Property="Foreground" Value="#FFF4F7FF"/>
             <Setter Property="BorderBrush" Value="{StaticResource Line}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="Bd" CornerRadius="6"
+                        <Border x:Name="Bd" CornerRadius="7"
                                 Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}">
@@ -42,7 +51,9 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#FF323848"/>
+                                <Setter TargetName="Bd" Property="Background" Value="#FF1D3154"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource LineHot}"/>
+                                <Setter Property="Foreground" Value="#FFFFFFFF"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Opacity" Value="0.45"/>
@@ -54,24 +65,24 @@
         </Style>
 
         <Style TargetType="TextBox">
-            <Setter Property="Background" Value="#FF11141B"/>
-            <Setter Property="Foreground" Value="#FFE6E8EF"/>
-            <Setter Property="BorderBrush" Value="{StaticResource Line}"/>
+            <Setter Property="Background" Value="#CC080D18"/>
+            <Setter Property="Foreground" Value="#FFF4F7FF"/>
+            <Setter Property="BorderBrush" Value="#FF334669"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="7,5"/>
-            <Setter Property="CaretBrush" Value="#FFE6E8EF"/>
+            <Setter Property="Padding" Value="9,6"/>
+            <Setter Property="CaretBrush" Value="{StaticResource Accent}"/>
         </Style>
 
         <Style TargetType="CheckBox">
-            <Setter Property="Foreground" Value="#FFE6E8EF"/>
+            <Setter Property="Foreground" Value="#FFF4F7FF"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
     </Window.Resources>
 
-    <DockPanel>
+    <DockPanel Background="{StaticResource AppBg}">
         <!-- 上段: 操作 -->
         <Border DockPanel.Dock="Top" Background="{StaticResource Panel}"
-                BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="10,8">
+                BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="12,10">
             <StackPanel>
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,7">
                     <TextBox x:Name="UrlInput" Width="440" Height="30"
@@ -113,7 +124,7 @@
 
         <!-- 下段: 状態とログ -->
         <Border DockPanel.Dock="Bottom" Background="{StaticResource Panel}"
-                BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Padding="10,6">
+                BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Padding="12,8">
             <DockPanel>
                 <Button DockPanel.Dock="Right" x:Name="UpdateBtn" Content="更新"
                         Click="Update_Click" Margin="6,0,0,0" Visibility="Collapsed"
@@ -122,14 +133,14 @@
                 <Button DockPanel.Dock="Right" Content="速度" Click="ToggleSpeed_Click" Margin="6,0,0,0"/>
                 <TextBlock DockPanel.Dock="Right" x:Name="SpeedText" Text=""
                            VerticalAlignment="Center" Margin="12,0,0,0"
-                           FontFamily="Consolas" Foreground="{StaticResource Accent}"/>
+                           FontFamily="Consolas" Foreground="{StaticResource Success}"/>
                 <TextBlock x:Name="StatusText" Text="" VerticalAlignment="Center"
                            TextTrimming="CharacterEllipsis" Foreground="{StaticResource Muted}"/>
             </DockPanel>
         </Border>
 
         <Border x:Name="SpeedPane" DockPanel.Dock="Bottom" Height="118"
-                Visibility="Collapsed"
+                Visibility="Collapsed" Background="#99070C16"
                 BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0">
             <DockPanel>
                 <StackPanel DockPanel.Dock="Right" Width="150" Margin="10,8"
@@ -150,7 +161,7 @@
         </Border>
 
         <Grid x:Name="LogPane" DockPanel.Dock="Bottom" Height="150" Visibility="Collapsed">
-            <ListBox x:Name="LogList" Background="#FF0D0F14" Foreground="#FFB9C0D0"
+            <ListBox x:Name="LogList" Background="#CC060912" Foreground="#FFD5DDF2"
                      BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0"
                      FontFamily="Consolas" FontSize="11"
                      ScrollViewer.HorizontalScrollBarVisibility="Auto"
@@ -178,7 +189,7 @@
                 <Style TargetType="ListBoxItem">
                     <Setter Property="Padding" Value="0"/>
                     <Setter Property="Margin" Value="8,4"/>
-                    <Setter Property="Background" Value="{StaticResource Panel}"/>
+                    <Setter Property="Background" Value="{StaticResource PanelHi}"/>
                     <Setter Property="Template">
                         <Setter.Value>
                             <ControlTemplate TargetType="ListBoxItem">
@@ -191,9 +202,11 @@
                                     <Trigger Property="IsSelected" Value="True">
                                         <Setter TargetName="Bd" Property="BorderBrush"
                                                 Value="{StaticResource Accent}"/>
+                                        <Setter TargetName="Bd" Property="Background" Value="#F01A2743"/>
                                     </Trigger>
                                     <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter TargetName="Bd" Property="Background" Value="#FF212632"/>
+                                        <Setter TargetName="Bd" Property="Background" Value="{StaticResource PanelHover}"/>
+                                        <Setter TargetName="Bd" Property="BorderBrush" Value="#FF596BFF"/>
                                     </Trigger>
                                 </ControlTemplate.Triggers>
                             </ControlTemplate>
@@ -211,8 +224,9 @@
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
 
-                        <Border Grid.Column="0" Width="46" Height="64" CornerRadius="4"
-                                Background="#FF0F1218" VerticalAlignment="Center">
+                        <Border Grid.Column="0" Width="46" Height="64" CornerRadius="5"
+                                Background="#FF070C16" BorderBrush="#6638D5FF"
+                                BorderThickness="1" VerticalAlignment="Center">
                             <Image Source="{Binding Thumb}" Stretch="UniformToFill"/>
                         </Border>
 
@@ -228,7 +242,7 @@
                                 <ProgressBar Height="4" Minimum="0" Maximum="100"
                                              Value="{Binding Percent, Mode=OneWay}"
                                              IsIndeterminate="{Binding IsIndeterminate}"
-                                             Background="#FF0F1218" Foreground="{StaticResource Accent}"
+                                             Background="#FF07101F" Foreground="{StaticResource Accent}"
                                              BorderThickness="0">
                                     <ProgressBar.Style>
                                         <Style TargetType="ProgressBar">
@@ -262,9 +276,10 @@
                             </Grid>
 
                             <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                                <Border Background="#FF262B38" CornerRadius="3" Padding="5,1">
+                                <Border Background="#331FE8B8" BorderBrush="#6638D5FF"
+                                        BorderThickness="1" CornerRadius="4" Padding="6,1">
                                     <TextBlock Text="{Binding SiteLabel}" FontSize="10"
-                                               Foreground="{StaticResource Muted}"/>
+                                               Foreground="{StaticResource Accent}"/>
                                 </Border>
                                 <TextBlock Text="{Binding StatusLabel}" FontSize="10" Margin="6,0,0,0"
                                            Foreground="{Binding StatusBrush}"/>

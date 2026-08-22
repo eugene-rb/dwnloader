@@ -1,7 +1,9 @@
 bin/
 obj/
 publish-win-x64/
+publish-v*/
 *.zip
 publish-v211/
 Releases/
+Releases-v*/
 Releases-install/
