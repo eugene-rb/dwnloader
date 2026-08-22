@@ -1,0 +1,4 @@
+bin/
+obj/
+publish-win-x64/
+*.zip
