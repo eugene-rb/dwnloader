@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -27,7 +27,7 @@
     <NoWarn>$(NoWarn);WFAC010</NoWarn>
     <!-- 表示するバージョンはここ1か所に置く。vpk pack へ渡す packVersion と
          同じ値にすること（更新後に題名だけ古いまま、を防ぐ）。 -->
-    <Version>2.1.0</Version>
+    <Version>2.2.0</Version>
   </PropertyGroup>
 
   <ItemGroup>
@@ -38,6 +38,13 @@
          img2pdf と同じ性質で、画質を落とさず速い。 -->
     <PackageReference Include="PdfSharp" Version="6.2.1" />
     <PackageReference Include="Velopack" Version="1.2.0" />
+    <!-- サイトのログイン画面をアプリ内に出して Cookie を受け取る。ユーザーに
+         DevTools を開かせたり cookies.txt を書き出させたりせずに済む。 -->
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
+    <!-- 受け取った Cookie は DPAPI で暗号化して保存する。auth_token は
+         アカウントそのものなので、平文で置かない。.NET 8 では標準ライブラリに
+         入っておらず、この小さな公式パッケージが必要。 -->
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
   </ItemGroup>
 
 </Project>

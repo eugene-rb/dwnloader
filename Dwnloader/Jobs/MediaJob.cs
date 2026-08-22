@@ -1,7 +1,8 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
+using Dwnloader.Auth;
 using Dwnloader.Core;
 
 namespace Dwnloader.Jobs;
@@ -229,11 +230,19 @@ public sealed partial class MediaJob : JobBase
             a.Add("--ffmpeg-location"); a.Add(ffmpeg);
         }
 
+        // 設定で明示されたファイルが最優先。無ければアプリ内ログインの分を
+        // cookies.txt に書き出して渡す（yt-dlp はファイル以外から読めない）。
         var cookies = (Settings.MediaCookiesFile ?? "").Trim();
-        if (cookies.Length > 0)
+        if (cookies.Length > 0 && !File.Exists(cookies))
         {
-            if (File.Exists(cookies)) { a.Add("--cookies"); a.Add(cookies); }
-            else Log("warn", $"Cookie ファイルが見つかりません: {cookies}");
+            Log("warn", $"Cookie ファイルが見つかりません: {cookies}");
+            cookies = "";
+        }
+        if (cookies.Length == 0) cookies = CookieStore.CookiesTxtPath();
+
+        if (cookies.Length > 0 && File.Exists(cookies))
+        {
+            a.Add("--cookies"); a.Add(cookies);
         }
 
         if (kind == MediaKind.Audio)

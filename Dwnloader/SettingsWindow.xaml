@@ -1,24 +1,28 @@
-<Window x:Class="Dwnloader.SettingsWindow"
+﻿<Window x:Class="Dwnloader.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="設定" Height="600" Width="700"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
-        Background="#FF14161C" Foreground="#FFE6E8EF">
+        Background="#FF070A12" Foreground="#FFF4F7FF">
 
     <Window.Resources>
-        <SolidColorBrush x:Key="Line" Color="#FF2A2E3B"/>
-        <SolidColorBrush x:Key="Muted" Color="#FF9AA1B4"/>
+        <SolidColorBrush x:Key="Panel" Color="#CC111827"/>
+        <SolidColorBrush x:Key="PanelHi" Color="#E6172236"/>
+        <SolidColorBrush x:Key="Line" Color="#FF293752"/>
+        <SolidColorBrush x:Key="LineHot" Color="#FF38D5FF"/>
+        <SolidColorBrush x:Key="Muted" Color="#FF9AA8C7"/>
+        <SolidColorBrush x:Key="Accent" Color="#FF38D5FF"/>
 
         <Style TargetType="TextBox">
-            <Setter Property="Background" Value="#FF11141B"/>
-            <Setter Property="Foreground" Value="#FFE6E8EF"/>
-            <Setter Property="BorderBrush" Value="{StaticResource Line}"/>
-            <Setter Property="Padding" Value="5,3"/>
-            <Setter Property="CaretBrush" Value="#FFE6E8EF"/>
+            <Setter Property="Background" Value="#CC080D18"/>
+            <Setter Property="Foreground" Value="#FFF4F7FF"/>
+            <Setter Property="BorderBrush" Value="#FF334669"/>
+            <Setter Property="Padding" Value="8,5"/>
+            <Setter Property="CaretBrush" Value="{StaticResource Accent}"/>
             <Setter Property="Margin" Value="0,2"/>
         </Style>
         <Style TargetType="CheckBox">
-            <Setter Property="Foreground" Value="#FFE6E8EF"/>
+            <Setter Property="Foreground" Value="#FFF4F7FF"/>
             <Setter Property="Margin" Value="0,5"/>
         </Style>
         <Style TargetType="TextBlock">
@@ -28,26 +32,31 @@
         <Style TargetType="Button">
             <Setter Property="Padding" Value="12,5"/>
             <Setter Property="Margin" Value="6,0,0,0"/>
-            <Setter Property="Background" Value="#FF262B38"/>
-            <Setter Property="Foreground" Value="#FFE6E8EF"/>
+            <Setter Property="Background" Value="#FF142033"/>
+            <Setter Property="Foreground" Value="#FFF4F7FF"/>
             <Setter Property="BorderBrush" Value="{StaticResource Line}"/>
         </Style>
+        <Style TargetType="Expander">
+            <Setter Property="Foreground" Value="{StaticResource Muted}"/>
+            <Setter Property="Margin" Value="0,14,0,0"/>
+        </Style>
         <Style TargetType="GroupBox">
-            <Setter Property="Foreground" Value="#FFE6E8EF"/>
+            <Setter Property="Foreground" Value="#FFF4F7FF"/>
             <Setter Property="BorderBrush" Value="{StaticResource Line}"/>
+            <Setter Property="Background" Value="{StaticResource PanelHi}"/>
             <Setter Property="Padding" Value="10"/>
             <Setter Property="Margin" Value="0,0,0,10"/>
         </Style>
     </Window.Resources>
 
-    <DockPanel Margin="12">
+    <DockPanel Margin="12" Background="#00000000">
         <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal"
                     HorizontalAlignment="Right" Margin="0,10,0,0">
             <Button Content="キャンセル" Click="Cancel_Click" IsCancel="True"/>
             <Button Content="保存" Click="Save_Click" IsDefault="True"/>
         </StackPanel>
 
-        <TabControl Background="Transparent" BorderBrush="{StaticResource Line}">
+        <TabControl Background="{StaticResource Panel}" BorderBrush="{StaticResource Line}">
             <TabItem Header="保存先">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="10">
                     <StackPanel>
@@ -88,6 +97,51 @@
 
                         <TextBlock Text="ファイル名の最大長"/>
                         <TextBox x:Name="FilenameMaxLen" Width="90" HorizontalAlignment="Left"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem Header="アカウント">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="10">
+                    <StackPanel>
+                        <TextBlock TextWrapping="Wrap" Margin="0,0,0,4"
+                                   Text="ログインしておくと、R-18作品や年齢制限つきの投稿も取得できます。ボタンを押すと、いつものログイン画面がそのまま開きます。ID とパスワードを入れるだけで、あとは自動で設定されます。"/>
+
+                        <GroupBox Header="pixiv">
+                            <StackPanel>
+                                <TextBlock x:Name="PixivStatus" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                                    <Button Content="ログイン" Click="PixivLogin_Click" Margin="0"/>
+                                    <Button Content="ログアウト" Click="PixivLogout_Click"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </GroupBox>
+
+                        <GroupBox Header="X（旧Twitter）">
+                            <StackPanel>
+                                <TextBlock x:Name="TwitterStatus" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                                    <Button Content="ログイン" Click="TwitterLogin_Click" Margin="0"/>
+                                    <Button Content="ログアウト" Click="TwitterLogout_Click"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </GroupBox>
+
+                        <Expander Header="詳細設定（自分で Cookie を用意する場合）">
+                            <StackPanel Margin="0,6,0,0">
+                                <TextBlock TextWrapping="Wrap"
+                                           Text="空のままで構いません。入力するとログインより優先されます。"/>
+
+                                <TextBlock Text="pixiv の PHPSESSID"/>
+                                <TextBox x:Name="PixivCookie"/>
+
+                                <TextBlock Text="cookies.txt（yt-dlp に渡すファイル）"/>
+                                <DockPanel>
+                                    <Button DockPanel.Dock="Right" Content="参照" Click="PickCookies_Click"/>
+                                    <TextBox x:Name="MediaCookiesFile"/>
+                                </DockPanel>
+                            </StackPanel>
+                        </Expander>
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
@@ -135,9 +189,6 @@
                         <TextBox x:Name="JpegQuality" Width="90" HorizontalAlignment="Left"/>
 
                         <CheckBox x:Name="KeepImages" Content="変換前の元画像も残す"/>
-
-                        <TextBlock Text="pixiv の PHPSESSID（R-18作品に必要）"/>
-                        <TextBox x:Name="PixivCookie"/>
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
@@ -165,12 +216,6 @@
 
                         <CheckBox x:Name="PlaylistAll"
                                   Content="再生リスト・チャンネルは全体を取得する（オフなら先頭の1本だけ）"/>
-
-                        <TextBlock Text="Cookie ファイル（cookies.txt。ログイン必須の動画に必要）"/>
-                        <DockPanel>
-                            <Button DockPanel.Dock="Right" Content="参照" Click="PickCookies_Click"/>
-                            <TextBox x:Name="MediaCookiesFile"/>
-                        </DockPanel>
 
                         <TextBlock Text="yt-dlp のパス（空なら自動検出）"/>
                         <DockPanel>

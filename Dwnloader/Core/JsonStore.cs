@@ -1,4 +1,4 @@
-using System.Text.Encodings.Web;
+﻿using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -17,6 +17,18 @@ public static class AppPaths
     public static string SettingsPath => Path.Combine(ConfigDir, "settings.json");
     public static string HistoryPath => Path.Combine(ConfigDir, "history.json");
     public static string QueuePath => Path.Combine(ConfigDir, "queue.json");
+
+    /// <summary>ログインで受け取った Cookie（DPAPI で暗号化して置く）。</summary>
+    public static string AccountsPath => Path.Combine(ConfigDir, "accounts.dat");
+
+    /// <summary>
+    /// 上の accounts.dat から組み立てる yt-dlp 用の cookies.txt。
+    /// yt-dlp はファイルからしか Cookie を読めないので、暗号化したままでは渡せない。
+    /// </summary>
+    public static string CookiesTxtPath => Path.Combine(ConfigDir, "yt-dlp-cookies.txt");
+
+    /// <summary>アプリ内ログイン画面の作業フォルダ。ログイン状態はここに残る。</summary>
+    public static string WebViewDir => Path.Combine(ConfigDir, "webview");
 
     public static string DefaultOutputDir => Path.Combine(UserHome, "Downloads", "gallery-pdf");
     public static string DefaultVideoDir => Path.Combine(UserHome, "Downloads", AppName, "video");

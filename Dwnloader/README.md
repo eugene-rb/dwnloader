@@ -1,4 +1,4 @@
-# Dwnloader (C# / WPF 版)
+﻿# Dwnloader (C# / WPF 版)
 
 hitomi.la / momon-ga.com / pixiv.net の作品を PDF 化し、yt-dlp が対応する
 サイトから動画・音声を取得する常駐ツール。URL をコピーすると自動で取り込む。
@@ -109,7 +109,7 @@ URL 判定・ファイル名生成・日付解釈・`gg.js` 解析は、Python �
 突き合わせ用の入口を用意してある。
 
 ```
-Dwnloader.exe --selftest     # 純粋な関数の検証（101 項目）
+Dwnloader.exe --selftest     # 純粋な関数の検証（112 項目）
 Dwnloader.exe --dump         # Python 版と比較するための JSON を出力
 Dwnloader.exe --live         # 実サーバの gg.js と実画像で、出荷する経路を通す
 Dwnloader.exe --media <URL>  # yt-dlp を実際に動かして1本落とす

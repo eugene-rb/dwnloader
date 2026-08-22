@@ -1,5 +1,6 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.RegularExpressions;
+using Dwnloader.Auth;
 using Dwnloader.Core;
 
 namespace Dwnloader.Sites;
@@ -36,6 +37,28 @@ public sealed partial class PixivAdapter : SiteAdapter
         return new SourceRef(Name, pid, $"https://www.pixiv.net/artworks/{pid}");
     }
 
+    /// <summary>画面に出す案内。文言を1か所にまとめる。</summary>
+    private const string LoginHint = "設定の「アカウント」タブから pixiv にログインしてください。";
+
+    /// <summary>
+    /// pixiv へ送る Cookie。アプリ内ログインで受け取ったものを使い、
+    /// 設定に手入力があればそちらを優先する（自分で PHPSESSID を管理したい人向け）。
+    ///
+    /// 送るのは PHPSESSID だけに絞る。ログイン時には Cloudflare の
+    /// cf_clearance なども一緒に手に入るが、あれは取得時の User-Agent と
+    /// 結び付いているため、こちらの User-Agent で送り返すと逆に弾かれる。
+    /// </summary>
+    private static string CookieHeader(SettingsData settings)
+    {
+        var manual = (settings.PixivCookie ?? "").Trim();
+        if (manual.Length > 0)
+        {
+            // 生の PHPSESSID 値でも `PHPSESSID=...` 形式でも受け付ける
+            return manual.Contains('=') ? manual : $"PHPSESSID={manual}";
+        }
+        return CookieStore.Header(CookieStore.Pixiv, "PHPSESSID");
+    }
+
     private async Task<JsonElement> ApiAsync(string path, SourceRef reference, SiteContext ctx)
     {
         var headers = new Dictionary<string, string>
@@ -45,12 +68,8 @@ public sealed partial class PixivAdapter : SiteAdapter
             ["X-Requested-With"] = "XMLHttpRequest",
         };
 
-        var cookie = (ctx.Settings.PixivCookie ?? "").Trim();
-        if (cookie.Length > 0)
-        {
-            // 生の PHPSESSID 値でも `PHPSESSID=...` 形式でも受け付ける
-            headers["Cookie"] = cookie.Contains('=') ? cookie : $"PHPSESSID={cookie}";
-        }
+        var cookie = CookieHeader(ctx.Settings);
+        if (cookie.Length > 0) headers["Cookie"] = cookie;
 
         var resp = await Net.GetWithRetryAsync(
             ctx.Client, $"https://www.pixiv.net/ajax/{path}", headers,
@@ -58,10 +77,15 @@ public sealed partial class PixivAdapter : SiteAdapter
 
         int code = resp.StatusCode;
         if (code is 401 or 403)
-            throw new AuthRequiredException(
-                "この作品にはログインが必要です。設定で pixiv の PHPSESSID を登録してください。");
+            throw new AuthRequiredException("この作品にはログインが必要です。" + LoginHint);
         if (code == 404)
-            throw new SiteException("作品が見つかりません（非公開・削除済みの可能性があります）");
+        {
+            // R-18 作品は、未ログインだと「無い」ものとして返ってくることがある。
+            // 削除済みと区別できないので、ログインしていないときだけ可能性を添える。
+            throw new SiteException(
+                "作品が見つかりません（非公開・削除済みの可能性があります）"
+                + (cookie.Length == 0 ? "。R-18作品の場合は" + LoginHint : ""));
+        }
         if (code != 200)
             throw new SiteException($"pixiv API エラー (HTTP {code})");
 
@@ -84,8 +108,8 @@ public sealed partial class PixivAdapter : SiteAdapter
             if (cookie.Length == 0)
             {
                 throw new AuthRequiredException(
-                    $"取得できませんでした（{(message.Length > 0 ? message : "ログインが必要な作品の可能性があります")}）。" +
-                    "設定で pixiv の PHPSESSID を登録してください。");
+                    $"取得できませんでした（{(message.Length > 0 ? message : "ログインが必要な作品の可能性があります")}）。"
+                    + LoginHint);
             }
             throw new SiteException(message.Length > 0 ? message : "pixiv API がエラーを返しました");
         }

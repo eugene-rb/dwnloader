@@ -1,6 +1,7 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
+using Dwnloader.Auth;
 using Dwnloader.Core;
 using Dwnloader.Jobs;
 
@@ -24,6 +25,76 @@ public partial class SettingsWindow : Window
         UpdateStatus.Text = updates is { IsSupported: true }
             ? $"現在 v{AppInfo.Version}"
             : UpdateService.UnsupportedReason;
+
+        RefreshAccounts();
+    }
+
+    // ------------------------------------------------------------ アカウント
+
+    private void PixivLogin_Click(object sender, RoutedEventArgs e) => Login(CookieStore.Pixiv);
+    private void TwitterLogin_Click(object sender, RoutedEventArgs e) => Login(CookieStore.Twitter);
+
+    private void PixivLogout_Click(object sender, RoutedEventArgs e) => Logout(CookieStore.Pixiv);
+    private void TwitterLogout_Click(object sender, RoutedEventArgs e) => Logout(CookieStore.Twitter);
+
+    /// <summary>
+    /// アプリの中にログイン画面を出す。
+    ///
+    /// ログイン結果は保存ボタンとは無関係にその場で保存する。ログインし直した後に
+    /// 「キャンセル」を押してログインまで消えてしまうと、何をしたのか分からなくなる。
+    /// </summary>
+    private void Login(string site)
+    {
+        var result = LoginWindow.Show(this, LoginTarget.For(site));
+        RefreshAccounts();
+
+        if (result is null) return;             // 自分で閉じた
+        if (result.Ok)
+        {
+            MessageBox.Show(this, result.Message, "ログイン",
+                            MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        MessageBox.Show(this,
+                        result.Message + Environment.NewLine + Environment.NewLine +
+                        "「詳細設定」から Cookie を手で指定することもできます。",
+                        "ログイン", MessageBoxButton.OK, MessageBoxImage.Warning);
+    }
+
+    private void Logout(string site)
+    {
+        CookieStore.Clear(site);
+        RefreshAccounts();
+    }
+
+    /// <summary>ログイン状態の表示を作り直す。</summary>
+    private void RefreshAccounts()
+    {
+        PixivStatus.Text = StatusFor(
+            CookieStore.Pixiv, PixivCookie.Text.Trim().Length > 0,
+            "R-18作品も取得できます。", "手入力の PHPSESSID を使います。");
+
+        // cookies.txt は「書いてあるか」ではなく「実在するか」で見る。
+        // MediaJob 側も、存在しないパスは無視してログインの分に切り替える。
+        var manualCookies = MediaCookiesFile.Text.Trim();
+        TwitterStatus.Text = StatusFor(
+            CookieStore.Twitter, manualCookies.Length > 0 && File.Exists(manualCookies),
+            "センシティブな投稿も取得できます。", "手入力の cookies.txt を使います。");
+    }
+
+    /// <summary>
+    /// 手入力があればそちらが優先されるので、ログイン済みでも
+    /// 「実際に使われるのはどちらか」が分かるように出す。
+    /// </summary>
+    private static string StatusFor(string site, bool manualInUse, string loggedInNote, string manualNote)
+    {
+        if (manualInUse) return "設定済み — " + manualNote;
+
+        var at = CookieStore.SavedAt(site);
+        return at is null
+            ? "未ログイン — 公開されているものだけ取得できます。"
+            : $"ログイン済み（{at:yyyy/MM/dd HH:mm}） — {loggedInNote}";
     }
 
     /// <summary>手で更新を確認する。見つかったら本体の「更新」ボタンから適用する。</summary>

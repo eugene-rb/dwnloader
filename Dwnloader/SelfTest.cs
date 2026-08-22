@@ -1,5 +1,6 @@
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 using System.Text;
+using Dwnloader.Auth;
 using Dwnloader.Core;
 using Dwnloader.Sites;
 
@@ -41,6 +42,7 @@ public static class SelfTest
         TestMediaMatching();
         TestSourceKeys();
         TestLibraryIndex();
+        TestCookieStore();
 
         Console.WriteLine($"\n合計: {_passed} 件成功 / {_failed} 件失敗");
         return _failed == 0 ? 0 : 1;
@@ -276,6 +278,82 @@ public static class SelfTest
               UrlDetect.Hashed("https://a.example/x"), UrlDetect.Hashed("https://a.example/x"));
     }
 
+
+    /// <summary>
+    /// ログインで受け取った Cookie の変換。cookies.txt の形式は yt-dlp 側が
+    /// 厳密に見ており（1行目の決まり文句、タブ区切り7項目、期限は整数）、
+    /// 1文字ずれるとファイルごと読み捨てられて「ログインしているのに
+    /// 年齢制限で落ちない」という分かりにくい失敗になる。
+    /// </summary>
+    private static void TestCookieStore()
+    {
+        Section("ログイン Cookie の変換");
+
+        var cookies = new List<StoredCookie>
+        {
+            new() { Name = "auth_token", Value = "abc", Domain = ".x.com", Path = "/",
+                    Secure = true, HttpOnly = true, Expires = 1893456000 },
+            new() { Name = "ct0", Value = "def", Domain = ".x.com", Path = "/",
+                    Secure = true, HttpOnly = false, Expires = 0 },
+        };
+
+        Check("ヘッダを組み立てる", CookieStore.ToHeader(cookies), "auth_token=abc; ct0=def");
+
+        var lines = CookieStore.ToNetscape(cookies).Split('\n');
+        Check("1行目は決まり文句", lines[0], "# Netscape HTTP Cookie File");
+        Check("HttpOnly には目印を付ける", lines[3],
+              "#HttpOnly_.x.com\tTRUE\t/\tTRUE\t1893456000\tauth_token\tabc");
+        Check("セッションCookie の期限は 0", lines[4],
+              ".x.com\tTRUE\t/\tTRUE\t0\tct0\tdef");
+
+        // 先頭にドットが無いドメインは、そのホストだけに送る
+        var host = new List<StoredCookie>
+        {
+            new() { Name = "PHPSESSID", Value = "1_x", Domain = "www.pixiv.net", Path = "/",
+                    Secure = true, HttpOnly = true, Expires = 1893456000 },
+        };
+        Check("サブドメインへ送らない印", CookieStore.ToNetscape(host).Split('\n')[3],
+              "#HttpOnly_www.pixiv.net\tFALSE\t/\tTRUE\t1893456000\tPHPSESSID\t1_x");
+
+        // 期限切れは落とし、同じ Cookie は後から来た方を残す
+        long past = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 60;
+        var mixed = new List<StoredCookie>
+        {
+            new() { Name = "old", Value = "1", Domain = ".x.com", Path = "/", Expires = past },
+            new() { Name = "ct0", Value = "古い", Domain = ".x.com", Path = "/" },
+            new() { Name = "ct0", Value = "新しい", Domain = ".x.com", Path = "/" },
+        };
+        var alive = CookieStore.Alive(mixed);
+        Check("期限切れと重複を落とす", alive.Count, 1);
+        Check("後から来た値を残す", alive[0].Value, "新しい");
+
+        // pixiv は未ログインでも PHPSESSID を配る。下線の有無で見分ける。
+        var pixiv = LoginTarget.For(CookieStore.Pixiv);
+        Check("未ログインの PHPSESSID は弾く",
+              pixiv.LooksLoggedIn(new List<StoredCookie>
+              {
+                  new() { Name = "PHPSESSID", Value = "1beffb6c42345695c5f3c6f86059692e" },
+              }), false);
+        Check("ログイン後の PHPSESSID は通す",
+              pixiv.LooksLoggedIn(new List<StoredCookie>
+              {
+                  new() { Name = "PHPSESSID", Value = "12345678_AbCdEf" },
+              }), true);
+
+        // X は auth_token と ct0 の両方が要る（yt-dlp の判定と揃える）
+        var x = LoginTarget.For(CookieStore.Twitter);
+        Check("auth_token だけでは足りない",
+              x.LooksLoggedIn(new List<StoredCookie>
+              {
+                  new() { Name = "auth_token", Value = "abc" },
+              }), false);
+        Check("auth_token と ct0 が揃えば通す",
+              x.LooksLoggedIn(new List<StoredCookie>
+              {
+                  new() { Name = "auth_token", Value = "abc" },
+                  new() { Name = "ct0", Value = "def" },
+              }), true);
+    }
 
     private static void TestLibraryIndex()
     {
