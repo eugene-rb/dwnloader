@@ -13,6 +13,16 @@ from ctypes import wintypes
 
 _user32 = ctypes.WinDLL("user32", use_last_error=True)
 _dwmapi = ctypes.WinDLL("dwmapi", use_last_error=True)
+_kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+
+THREAD_PRIORITY_TIME_CRITICAL = 15
+_kernel32.SetThreadPriority.argtypes = [wintypes.HANDLE, ctypes.c_int]
+_kernel32.SetThreadPriority.restype = wintypes.BOOL
+# GetCurrentThread() は常にこの疑似ハンドル(-2)を返す定数。restype を素の
+# HANDLE にして呼ぶと、64bit環境では符号無しの巨大な値として丸められ、
+# それを SetThreadPriority へ渡し直す際に OverflowError になる
+# （ctypes の HANDLE 往復で実際に踏んだ）。呼ばずに定数を直接使えば安全。
+_CURRENT_THREAD = ctypes.c_void_p(-2)
 
 GWL_STYLE = -16
 WS_THICKFRAME = 0x00040000
@@ -153,6 +163,16 @@ def drag_window(hwnd, should_stop=None) -> bool:
     """
     if not hwnd or not left_button_down():
         return False
+
+    # ダウンロードジョブやURL解析などバックグラウンドのCPU処理が動いている間も
+    # 追従が遅れないよう、このスレッドの優先度を上げる。既定の優先度のままだと
+    # GIL の奪い合いに負けて呼び出しの間隔が空き、「ドラッグが効かない」ように
+    # 見える（このスレッドはドラッグ中しか生きないので、他スレッドを長時間
+    # 飢えさせる心配はない）。
+    try:
+        _kernel32.SetThreadPriority(_CURRENT_THREAD, THREAD_PRIORITY_TIME_CRITICAL)
+    except Exception:
+        pass
 
     cx, cy = cursor_pos()
     wx, wy = window_pos(hwnd)

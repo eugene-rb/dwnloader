@@ -389,13 +389,15 @@ class DownloadManager:
             threading.Thread(target=old.shutdown, kwargs={"wait": True},
                              daemon=True).start()
 
-    def shutdown(self, timeout: float = 5.0) -> None:
+    def shutdown(self) -> None:
+        """走っているジョブに中止を伝え、プールを畳む。
+
+        実行中のスレッドの完了は待たない。ffmpeg の結合など中止が効かない
+        処理の最中に終了しようとして固まるより、アプリを閉じる操作自体は
+        即座に返る方を優先する。
+        """
         self.cancel_all()
         with self._lock:
             pools = list(self._pools.values())
         for pool in pools:
             pool.shutdown(wait=False, cancel_futures=True)
-        deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            time.sleep(0.05)
-            break

@@ -21,7 +21,14 @@ const el = {
   openSettings: $('open-settings'), settingsCancel: $('settings-cancel'),
 };
 
-const state = { entries: new Map(), settings: {}, unread: 0, worstLevel: 'warn' };
+const state = { entries: new Map(), sig: new Map(), settings: {}, unread: 0, worstLevel: 'warn' };
+
+/** カードの見た目に関わる項目だけを繋いだ印。state 一括送信のたびに全件を
+ * 再描画すると、件数が多いときにカクつく。前回と同じ印なら描画を省く。 */
+function entrySignature(e) {
+  return [e.status, e.done, e.total, e.detail, e.message, e.title, e.subtitle,
+          e.canSwitchKind, e.outPath, e.active, e.thumb ? 1 : 0].join('|');
+}
 
 /* ==========================================================================
    カードの描画
@@ -184,12 +191,17 @@ function applyState(s) {
   if (Array.isArray(s.entries)) {
     const seen = new Set();
     for (const e of s.entries) {
-      state.entries.set(e.id, e);
-      renderCard(e);
       seen.add(e.id);
+      state.entries.set(e.id, e);
+      // 件数が多いと state の一括送信のたびに全カードを描き直すことになり
+      // 重い。前回と見た目が変わっていないカードは DOM に触らずに飛ばす。
+      const sig = entrySignature(e);
+      if (state.sig.get(e.id) === sig) continue;
+      state.sig.set(e.id, sig);
+      renderCard(e);
     }
     for (const id of [...state.entries.keys()]) {
-      if (!seen.has(id)) { state.entries.delete(id); removeCard(id); }
+      if (!seen.has(id)) { state.entries.delete(id); state.sig.delete(id); removeCard(id); }
     }
     el.clearDone.hidden = !s.entries.some((e) => !e.active);
     el.clearAll.hidden = s.entries.length === 0;
@@ -236,11 +248,13 @@ window.__recv = (batch) => {
       case 'state': applyState(ev); break;
       case 'entry':
         state.entries.set(ev.id, ev);
+        state.sig.set(ev.id, entrySignature(ev));
         renderCard(ev);
         syncEmpty();
         break;
       case 'removed':
         state.entries.delete(ev.id);
+        state.sig.delete(ev.id);
         removeCard(ev.id);
         syncEmpty();
         break;

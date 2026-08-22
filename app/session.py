@@ -7,6 +7,7 @@ import os
 import subprocess
 import sys
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -17,7 +18,11 @@ from .clipboard import ClipboardWatcher
 from .config import History, QueueStore, Settings, media_dir
 from .downloader import DownloadManager, Emit, GalleryJob, sweep_temp_dirs
 from .models import ACTIVE, SourceRef, Status
-from .sites import ADAPTERS, extract_all, find_urls, resolve
+from .sites import ADAPTERS, find_urls, resolve
+
+#: 状態全体の送信をまとめる間隔。EventPump の送信間隔と揃えている。
+#: ジョブの完了が連続すると push_state() が殺到するので、直近の1回だけ送る。
+_STATE_DEBOUNCE = 0.1
 
 SITE_LABEL = {"hitomi": "hitomi", "momonga": "momonga", "pixiv": "pixiv"}
 
@@ -104,7 +109,19 @@ class Session:
 
         self._lock = threading.RLock()
         self.entries: dict[str, Entry] = {}
+        #: ref.key -> Entry。同一作品の重複判定を件数に関わらず一定時間で行うための索引。
+        self._by_key: dict[str, Entry] = {}
         self._ids = itertools.count(1)
+
+        # URL の解釈（特に yt-dlp の抽出器判定）は重い場合がある。クリップボード
+        # 監視や JS からの呼び出しをそこで塞がないよう、専用の1本のスレッドに
+        # 直列で流す（1本にすることで、続けて貼られた分の追加順も保たれる）。
+        self._resolver = ThreadPoolExecutor(max_workers=1, thread_name_prefix="url-resolve")
+        self._resolve_cancel = threading.Event()
+
+        self._state_lock = threading.Lock()
+        self._state_timer: threading.Timer | None = None
+        self._state_pending = False
 
         self.manager = DownloadManager(settings, self._on_job_event, lanes={
             "gallery": int(settings["gallery_workers"]),
@@ -147,6 +164,26 @@ class Session:
         self.emit("entry", entry.to_dict())
 
     def push_state(self) -> None:
+        """状態全体の送信を予約する。
+
+        ジョブの完了やキューへの大量追加が連続すると、この呼び出しも連続
+        する。snapshot() は entries 全件をなめるので、呼ばれるたびに毎回
+        送っていると件数が多いときに重くなる。短い間隔にまとめ、直近の
+        状態だけを1回送る。
+        """
+        with self._state_lock:
+            self._state_pending = True
+            if self._state_timer is None:
+                self._state_timer = threading.Timer(_STATE_DEBOUNCE, self._flush_state)
+                self._state_timer.daemon = True
+                self._state_timer.start()
+
+    def _flush_state(self) -> None:
+        with self._state_lock:
+            self._state_timer = None
+            if not self._state_pending:
+                return
+            self._state_pending = False
         self.emit("state", self.snapshot())
 
     def snapshot(self) -> dict:
@@ -297,15 +334,25 @@ class Session:
         clipboard_whitelist に載っているドメインは除外リストより優先する
         （過去に汎用抽出器で成功した実績があるため）。
         """
-        refs = extract_all(text)
-        seen = {r.key for r in refs}
         kind = self.media_kind()
         black_hosts = self._blacklist_hosts() if blacklist else set()
         white_hosts = self._whitelist_hosts() if blacklist else set()
 
-        for cand in find_urls(text):
-            if resolve(cand) is not None:
-                continue                       # ギャラリー側で拾い済み
+        refs: list[SourceRef] = []
+        seen: set[str] = set()
+        # find_urls は重複除去をしない。同じURLが何度も貼られていると
+        # （リストの重複や、貼り付けの繰り返しなど）、その回数だけ yt-dlp の
+        # 抽出器判定（数百〜千数百個の正規表現）を回すことになり無駄が大きい。
+        # ここで先に潰しておく。
+        for cand in dict.fromkeys(find_urls(text)):
+            if self._resolve_cancel.is_set():
+                break                           # 終了処理中。続きはしない
+            gallery_ref = resolve(cand)
+            if gallery_ref is not None:
+                if gallery_ref.key not in seen:
+                    seen.add(gallery_ref.key)
+                    refs.append(gallery_ref)
+                continue
             blocked = (blacklist and self._host_matches(cand, black_hosts)
                       and not self._host_matches(cand, white_hosts))
             ref = media.resolve_media(cand, kind, allow_generic=allow_generic and not blocked)
@@ -315,21 +362,55 @@ class Session:
         return refs
 
     def _on_clipboard(self, text: str) -> None:
-        # 既知サイト以外もyt-dlpの汎用抽出器で拾う（ブラックリスト式）。
-        # 除外ドメインだけは対象外にして、ただのページ巡回コピーの誤検出を減らす。
-        refs = self._resolve_text(text, allow_generic=True, blacklist=True)
-        if refs:
+        # URLの判定（特にyt-dlpの抽出器照合）は重いことがある。クリップボード
+        # 監視スレッドをそこで塞ぐと、大量のテキストが貼られたときに以降の
+        # コピーを取りこぼしかねないので、専用スレッドに渡してすぐ戻る。
+        if not (text or "").strip():
+            return
+        self._resolver.submit(self._on_clipboard_job, text)
+
+    def _on_clipboard_job(self, text: str) -> None:
+        try:
+            # 既知サイト以外もyt-dlpの汎用抽出器で拾う（ブラックリスト式）。
+            # 除外ドメインだけは対象外にして、ただのページ巡回コピーの誤検出を減らす。
+            refs = self._resolve_text(text, allow_generic=True, blacklist=True)
+        except Exception as exc:
+            self.log("error", f"クリップボードの解析に失敗しました: {type(exc).__name__}: {exc}")
+            return
+        if refs and not self._resolve_cancel.is_set():
             self.add_refs(refs, source="クリップボード")
 
     def add_text(self, text: str, source: str = "手動") -> int:
-        # 手で貼られたURLは、判定に外れても yt-dlp の汎用抽出器に賭ける
-        refs = self._resolve_text(text, allow_generic=True)
-        if not refs:
+        """テキストからURLを拾ってキューへ足す。
+
+        大量に貼られたテキストの解析（特に yt-dlp の抽出器照合）は時間が
+        かかることがあるため、呼び出し元（JS からの橋渡し）を塞がないよう
+        バックグラウンドで処理する。そのため件数はその場では分からず、
+        結果は通知とカードの追加で伝える。
+        """
+        if not (text or "").strip():
             self.notify("追加できません",
                         "hitomi.la / momon-ga.com / pixiv.net の作品URL、"
                         "または動画・音声のURLを入れてください", "warning")
             return 0
-        return self.add_refs(refs, source)
+        self._resolver.submit(self._add_text_job, text, source)
+        return 0
+
+    def _add_text_job(self, text: str, source: str) -> None:
+        try:
+            # 手で貼られたURLは、判定に外れても yt-dlp の汎用抽出器に賭ける
+            refs = self._resolve_text(text, allow_generic=True)
+        except Exception as exc:
+            self.log("error", f"URLの解析に失敗しました: {type(exc).__name__}: {exc}")
+            return
+        if self._resolve_cancel.is_set():
+            return
+        if not refs:
+            self.notify("追加できません",
+                        "hitomi.la / momon-ga.com / pixiv.net の作品URL、"
+                        "または動画・音声のURLを入れてください", "warning")
+            return
+        self.add_refs(refs, source)
 
     def add_refs(self, refs: list[SourceRef], source: str) -> int:
         added = skipped = duplicates = 0
@@ -337,22 +418,20 @@ class Session:
         new_entries: list[Entry] = []
 
         for ref in refs:
-            existing = self._find_entry(ref.key)
-            if existing is not None:
+            entry, created = self._find_or_create(ref)
+            if not created:
                 # 行を増やさず、既にある行へ案内する。未完了なら再試行の
                 # 入口がそこに出ている。
                 duplicates += 1
-                focus = focus or existing.job_id
+                focus = focus or entry.job_id
                 continue
 
-            if self.settings["skip_downloaded"] and ref.key in self.history:
-                entry = self._create(ref, Status.SKIPPED)
+            if entry.status is Status.SKIPPED:
                 entry.out_path = self.history.path_for(ref.key) or ""
                 entry.subtitle = f"取得済み — 保存済みの{_result_label(ref.kind)}を開けます"
                 entry.detail = "取得済み"
                 skipped += 1
             else:
-                entry = self._create(ref, Status.QUEUED)
                 entry.detail = "待機中"
                 added += 1
             new_entries.append(entry)
@@ -390,6 +469,7 @@ class Session:
             entry = Entry(job_id=job_id, ref=ref, status=status, title=ref.url,
                           subtitle=f"{head}情報を取得しています…")
             self.entries[job_id] = entry
+            self._by_key[ref.key] = entry
             return entry
 
     def _find_entry(self, key: str) -> Entry | None:
@@ -400,10 +480,23 @@ class Session:
         コピーするたびに行が増え続ける。
         """
         with self._lock:
-            for entry in self.entries.values():
-                if entry.ref.key == key:
-                    return entry
-        return None
+            return self._by_key.get(key)
+
+    def _find_or_create(self, ref: SourceRef) -> tuple[Entry, bool]:
+        """既存があれば返し、無ければ作る。1回のロックの中で行うことで、
+
+        大量のURLを複数スレッドから同時に追加しても（例: 続けて貼られた
+        テキストがそれぞれ処理中のとき）、同じ作品の行が2つできてしまう
+        競合を防ぐ。戻り値の bool は新規に作ったかどうか。
+        """
+        with self._lock:
+            existing = self._by_key.get(ref.key)
+            if existing is not None:
+                return existing, False
+            status = (Status.SKIPPED if self.settings["skip_downloaded"]
+                      and ref.key in self.history else Status.QUEUED)
+            entry = self._create(ref, status)
+            return entry, True
 
     # ============================================================== 実行
 
@@ -482,9 +575,15 @@ class Session:
             self.log("info", f"{len(targets)} 件を再試行します")
             self.notify("再試行を開始しました", f"{len(targets)}件", "info")
 
+    def _drop_by_key(self, entry: Entry) -> None:
+        if self._by_key.get(entry.ref.key) is entry:
+            del self._by_key[entry.ref.key]
+
     def remove(self, job_id: str) -> None:
         with self._lock:
             entry = self.entries.pop(job_id, None)
+            if entry is not None:
+                self._drop_by_key(entry)
         if entry is None:
             return
         self.manager.cancel(job_id)
@@ -498,7 +597,9 @@ class Session:
             targets = [e.job_id for e in self.entries.values()
                        if e.status not in ACTIVE]
             for job_id in targets:
-                self.entries.pop(job_id, None)
+                entry = self.entries.pop(job_id, None)
+                if entry is not None:
+                    self._drop_by_key(entry)
         for job_id in targets:
             self.manager.forget(job_id)
             self.emit("removed", {"id": job_id})
@@ -510,6 +611,7 @@ class Session:
         with self._lock:
             targets = list(self.entries.keys())
             self.entries.clear()
+            self._by_key.clear()
         for job_id in targets:
             self.manager.cancel(job_id)
             self.manager.forget(job_id)
@@ -525,6 +627,8 @@ class Session:
         for job_id in job_ids:
             with self._lock:
                 entry = self.entries.pop(job_id, None)
+                if entry is not None:
+                    self._drop_by_key(entry)
             if entry is None:
                 continue
             self.manager.cancel(job_id)
@@ -593,7 +697,9 @@ class Session:
             return False
 
         with self._lock:
+            self._drop_by_key(entry)
             entry.ref = SourceRef(entry.ref.site, entry.ref.gid, entry.ref.url, kind)
+            self._by_key[entry.ref.key] = entry
             entry.status = Status.QUEUED
             entry.started = False
             entry.done = entry.total = 0
@@ -892,8 +998,16 @@ class Session:
 
     def shutdown(self) -> None:
         self.clipboard.stop()
-        self.persist()
+        # URL解析中のバックグラウンド処理があれば打ち切る。大量のテキストを
+        # 解析している途中でも、終了操作そのものは即座に返るようにする。
+        self._resolve_cancel.set()
+        self._resolver.shutdown(wait=False, cancel_futures=True)
         self.manager.shutdown()
+        # ジョブの中止で書き換わった分もまとめて、確実にディスクへ書いてから終わる。
+        self.persist()
+        self.queue_store.flush()
+        self.settings.flush()
+        self.history.flush()
 
     def running_count(self) -> int:
         with self._lock:

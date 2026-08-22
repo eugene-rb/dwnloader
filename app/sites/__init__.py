@@ -13,7 +13,7 @@ from .pixiv import PixivAdapter
 
 __all__ = [
     "ADAPTERS", "AuthRequired", "Context", "SiteAdapter", "SiteError", "Unsupported",
-    "adapter_for", "resolve", "extract_all", "find_urls", "is_url",
+    "adapter_for", "resolve", "find_urls", "is_url",
 ]
 
 ADAPTERS: dict[str, SiteAdapter] = {
@@ -80,15 +80,3 @@ def resolve(url: str) -> SourceRef | None:
         if ref is not None:
             return ref
     return None
-
-
-def extract_all(text: str) -> list[SourceRef]:
-    """任意のテキストから対応URLを全部拾う（重複は除く）。"""
-    refs: list[SourceRef] = []
-    seen: set[str] = set()
-    for cand in find_urls(text):
-        ref = resolve(cand)
-        if ref is not None and ref.key not in seen:
-            seen.add(ref.key)
-            refs.append(ref)
-    return refs

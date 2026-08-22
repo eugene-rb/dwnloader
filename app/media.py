@@ -17,6 +17,7 @@ import shutil
 import tempfile
 import threading
 import time
+from functools import lru_cache
 from pathlib import Path
 
 from .config import Settings, media_dir
@@ -94,6 +95,24 @@ def import_error() -> str:
     return _import_error
 
 
+@lru_cache(maxsize=4096)
+def _match_extractor(url: str) -> tuple[str, str] | None:
+    """URLに合う抽出器を探し、(site, gid) を返す。合わなければ None。
+
+    抽出器は千数百あり、1件ごとに全部へ .suitable() を掛けるのは重い。
+    大量のURLを一度に処理するとき（クリップボードの一括貼り付けなど）、
+    同じURLを何度も判定し直さないよう記憶する（マッチしなかった結果も含む）。
+    """
+    for ie in _extractor_classes():
+        try:
+            if not ie.suitable(url):
+                continue
+        except Exception:
+            continue           # 抽出器1つの不調で判定全体を止めない
+        return _site_of(ie), _id_of(ie, url)
+    return None
+
+
 def resolve_media(url: str, kind: str, *, allow_generic: bool = False) -> SourceRef | None:
     """yt-dlp が対応していると分かるURLだけを SourceRef にする。
 
@@ -106,13 +125,10 @@ def resolve_media(url: str, kind: str, *, allow_generic: bool = False) -> Source
         return None
     kind = kind if kind in KIND_LABEL else KIND_VIDEO
 
-    for ie in _extractor_classes():
-        try:
-            if not ie.suitable(url):
-                continue
-        except Exception:
-            continue           # 抽出器1つの不調で判定全体を止めない
-        return SourceRef(site=_site_of(ie), gid=_id_of(ie, url), url=url, kind=kind)
+    match = _match_extractor(url)
+    if match is not None:
+        site, gid = match
+        return SourceRef(site=site, gid=gid, url=url, kind=kind)
 
     if allow_generic and available():
         return SourceRef(site="web", gid=_hashed(url), url=url, kind=kind)
