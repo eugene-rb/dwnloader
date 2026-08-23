@@ -652,7 +652,9 @@ public sealed class Session : IDisposable
 
     public void ClearFinished()
     {
-        RemoveMany(Entries.Where(e => !e.IsActive).ToList());
+        // 「完了を消す」は完了(Done/Skipped)のみが対象。失敗・一部失敗・キャンセルは
+        // 未完了(IsUnfinished)として残し、誤って消えないようにする。
+        RemoveMany(Entries.Where(e => !e.IsActive && !StatusText.IsUnfinished(e.Status)).ToList());
     }
 
     /// <summary>進行中も含めてキューを空にする。走っているものは中止してから消す。</summary>
