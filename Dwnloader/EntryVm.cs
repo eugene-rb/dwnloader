@@ -154,6 +154,9 @@ public sealed class EntryVm : INotifyPropertyChanged
     /// <summary>すでに走り出したか。中止後の再開判定に使う。</summary>
     public bool Started { get; set; }
 
+    /// <summary>自動再試行を何回使ったか。手動の再試行では 0 に戻す。</summary>
+    public int AutoRetryCount { get; set; }
+
     public IReadOnlyList<string> Tags { get; set; } = Array.Empty<string>();
 
     /// <summary>

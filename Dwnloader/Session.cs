@@ -535,7 +535,13 @@ public sealed class Session : IDisposable
 
     // ============================================================== 実行
 
-    public void Start(string jobId, string reusePath = "")
+    /// <summary>
+    /// minPages: reusePath を上書きしてよい最小ページ数。自動再試行がこれを
+    /// 下回る結果しか得られなかった場合、GalleryJob は既存ファイルを残す
+    /// （悪い結果で良いPDFを黙って潰さないため）。手動再試行では常に0（無条件で上書き）。
+    /// keepMissing: フロアに引っかかったときにそのまま報告する欠落数（前回の値）。
+    /// </summary>
+    public void Start(string jobId, string reusePath = "", int minPages = 0, int keepMissing = 0)
     {
         if (!_byId.TryGetValue(jobId, out var entry)) return;
         if (entry.Status != JobStatus.Queued || entry.Started) return;
@@ -554,7 +560,8 @@ public sealed class Session : IDisposable
         {
             _manager.SetWorkers(DownloadManager.LaneGallery, settings.GalleryWorkers);
             _ = _manager.SubmitAsync(
-                new GalleryJob(jobId, entry.Reference, settings, events, _client, reusePath),
+                new GalleryJob(jobId, entry.Reference, settings, events, _client, reusePath,
+                              minPages, keepMissing),
                 DownloadManager.LaneGallery);
         }
         MarkStateDirty();
@@ -585,30 +592,98 @@ public sealed class Session : IDisposable
             Log("warn", $"キャンセルを要求しました: {entry.Reference.Url}");
     }
 
-    public void Retry(string jobId)
+    /// <summary>再試行できる失敗のうち、自動で再試行する回数の上限。</summary>
+    private const int AutoRetryLimit = 2;
+
+    /// <summary>n回目（1始まり）の自動再試行までの待ち時間。1回ごとの通信の
+    /// 再試行（数秒）とは別の時間軸で、瞬断ではなく数十秒〜のブレを想定する。</summary>
+    private static TimeSpan AutoRetryDelay(int attempt) =>
+        TimeSpan.FromSeconds(attempt <= 1 ? 20 : 60);
+
+    public void Retry(string jobId, bool auto = false)
     {
         if (!_byId.TryGetValue(jobId, out var entry)) return;
         if (entry.IsActive) return;
 
-        // 前回が一部失敗なら、その不完全なPDFを置き換える。別名で出すと
-        // 壊れた方が綺麗な名前に残り、良い方が「(2)」になってしまう。
-        var replace = entry.Status == JobStatus.Partial
-                      && entry.OutPath.Length > 0 && File.Exists(entry.OutPath)
+        // 手動での再試行はユーザーの判断が入っているので、自動再試行の
+        // 残り回数を仕切り直す。自動再試行からの呼び出しでは回数を保つ。
+        if (!auto) entry.AutoRetryCount = 0;
+
+        // 既存の出力ファイルがあれば、それを置き換える対象にする。Partial に
+        // 限定しない：自動再試行が連鎖する途中で Failed を挟んでも（例えば
+        // 一部失敗→自動再試行→今度は情報取得の段階で失敗、のような場合）
+        // OutPath をここで空にしないので、次の再試行でも同じファイルを指し
+        // 続けられる。空にしてしまうと、後続の試行が別名（「(2)」）で保存し、
+        // 元の（実は良い方の）ファイルがどこからも参照されずに残ってしまう。
+        var replace = entry.OutPath.Length > 0 && File.Exists(entry.OutPath)
             ? entry.OutPath : "";
+
+        // 自動再試行が前回より悪い結果（ページ数が少ない）を返してきても、
+        // 黙って良い方のPDFを潰さない。手動再試行はユーザーが見ているので
+        // 従来どおり無条件で上書きする。
+        int minPages = auto && replace.Length > 0 ? (int)entry.Done : 0;
+        int keepMissing = minPages > 0 ? (int)Math.Max(0, entry.Total - entry.Done) : 0;
 
         entry.Status = JobStatus.Queued;
         entry.Started = false;
         entry.Done = entry.Total = 0;
         entry.Detail = "待機中";
         entry.Message = "";
-        entry.OutPath = "";
+        // OutPath はここでは空にしない（上のコメント参照）。GalleryJob が
+        // Finish() で成功／フロア判定いずれの結果でも改めて正しい値を送ってくる。
 
         _manager.Forget(jobId);
         if (replace.Length > 0)
             Log("info", $"再試行: {Path.GetFileName(replace)} を上書きします");
 
-        Start(jobId, replace);
+        Start(jobId, replace, minPages, keepMissing);
         Persist();
+    }
+
+    /// <summary>
+    /// 条件を満たせば自動再試行を予約して true を返す（呼び出し側は通知や
+    /// 学習リストへの追加、失敗ログの出力を保留する）。満たさなければ false。
+    ///
+    /// カウントダウンの案内は Detail に載せる（Message ではない）。Message は
+    /// queue.json に永続化されて再起動後もそのまま復元されるが、タイマーは
+    /// セッション限りなので、そこにカウントダウンを書くと「もう発火しない
+    /// 自動再試行の予告」が再起動後も残り続ける。Detail は RestoreOne が
+    /// 状態から毎回組み立て直すので、この問題が起きない。
+    /// </summary>
+    private bool TryScheduleAutoRetry(string jobId, EntryVm entry, JobStatus expected,
+                                      string title, string reason, bool permanent = false)
+    {
+        if (permanent || entry.AutoRetryCount >= AutoRetryLimit) return false;
+
+        entry.AutoRetryCount++;
+        var delay = AutoRetryDelay(entry.AutoRetryCount);
+        int seconds = (int)delay.TotalSeconds;
+        entry.Detail += $" · {seconds}秒後に自動再試行 {entry.AutoRetryCount}/{AutoRetryLimit}";
+        Log("warn", $"{title}: {reason}。{seconds}秒後に自動で再試行します" +
+                    $"（{entry.AutoRetryCount}/{AutoRetryLimit}）");
+        ScheduleAutoRetry(jobId, entry, expected, delay);
+        return true;
+    }
+
+    /// <summary>
+    /// 失敗を自動で再試行する。既存の Retry をそのまま呼ぶので、置き換え・
+    /// 状態リセットなどは手動再試行と同じ経路を通る。
+    ///
+    /// 発火時に、スケジュールした時点と同じ行（同じ参照）・同じ状態のままか
+    /// を確かめる。ユーザーが手で再試行・削除・中止していれば何もしない。
+    /// </summary>
+    private void ScheduleAutoRetry(string jobId, EntryVm entry, JobStatus expected, TimeSpan delay)
+    {
+        _ = Task.Delay(delay, _shutdown.Token).ContinueWith(_ =>
+        {
+            Post(() =>
+            {
+                if (!_byId.TryGetValue(jobId, out var current) || !ReferenceEquals(current, entry))
+                    return;
+                if (current.Status != expected) return;
+                Retry(jobId, auto: true);
+            });
+        }, _shutdown.Token, TaskContinuationOptions.OnlyOnRanToCompletion, TaskScheduler.Default);
     }
 
     public void RetryAll()
@@ -747,6 +822,7 @@ public sealed class Session : IDisposable
         entry.OutPath = "";
         entry.Message = "";
         entry.Detail = "待機中";
+        entry.AutoRetryCount = 0;
         entry.Subtitle = SwapKindLabel(entry.Subtitle, kind);
 
         _manager.Forget(jobId);
@@ -876,9 +952,14 @@ public sealed class Session : IDisposable
                 entry.Status = JobStatus.Partial;
                 entry.Detail = $"{got}/{entry.Total}ページ";
                 entry.Message = $"{result.Missing}ページ取得できませんでした（再試行できます）";
-                Log("warn", $"一部欠落: {Path.GetFileName(entry.OutPath)}（{got}/{entry.Total}）");
-                Notify("一部のページを取得できませんでした",
-                       $"{title}（{got}/{entry.Total}ページ）", "warning");
+
+                if (!TryScheduleAutoRetry(jobId, entry, JobStatus.Partial,
+                        title, $"{result.Missing}ページ取得できませんでした"))
+                {
+                    Log("warn", $"一部欠落: {Path.GetFileName(entry.OutPath)}（{got}/{entry.Total}）");
+                    Notify("一部のページを取得できませんでした",
+                           $"{title}（{got}/{entry.Total}ページ）", "warning");
+                }
             }
             else
             {
@@ -906,13 +987,22 @@ public sealed class Session : IDisposable
                 entry.Subtitle = head.Length > 0 ? $"{head} · 取得できませんでした"
                                                  : "取得できませんでした";
             }
-            Notify("ダウンロードに失敗しました",
-                   entry.Message.Length > 0 ? entry.Message : title, "error");
 
-            // site="web" は既知サイトではなく汎用として拾ったことの目印。
-            // それすら失敗したなら、次回からクリップボードで同じドメインを
-            // 拾わないよう学習する（手動貼り付けには影響しない）。
-            if (entry.Reference.Site == "web") LearnBlacklist(entry.Reference.Url);
+            // ログイン要求・非対応種別など「待っても変わらない」失敗（result.Permanent）は
+            // TryScheduleAutoRetry の中で弾かれる。それ以外は瞬断やサイト側の一時的な
+            // 不調を疑って自動で数回まで再試行する。
+            if (!TryScheduleAutoRetry(jobId, entry, JobStatus.Failed, title, entry.Message,
+                    permanent: result.Permanent))
+            {
+                Notify("ダウンロードに失敗しました",
+                       entry.Message.Length > 0 ? entry.Message : title, "error");
+
+                // site="web" は既知サイトではなく汎用として拾ったことの目印。
+                // それすら失敗したなら、次回からクリップボードで同じドメインを
+                // 拾わないよう学習する（手動貼り付けには影響しない。自動再試行の
+                // 途中経過ではなく、最終的に失敗が確定した時点でのみ学習する）。
+                if (entry.Reference.Site == "web") LearnBlacklist(entry.Reference.Url);
+            }
         }
         else
         {

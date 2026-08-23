@@ -58,7 +58,8 @@ public sealed partial class MediaJob : JobBase
         if (resolved is null)
         {
             Log("error", YtDlp.InstallHint);
-            Finish(false, "", "yt-dlp が見つかりません");
+            // インストールされていない、というのは待っても解決しない。
+            Finish(false, "", "yt-dlp が見つかりません", permanent: true);
             return;
         }
 
@@ -115,6 +116,12 @@ public sealed partial class MediaJob : JobBase
         {
             SetStatus(JobStatus.Canceled);
             Finish(false, "", "キャンセルしました");
+        }
+        catch (InvalidOperationException e)
+        {
+            // ffmpeg が無い等、環境の問題。待っても解決しない。
+            Log("error", $"{Reference.Url}: {e.Message}");
+            Finish(false, "", e.Message, permanent: true);
         }
         catch (Exception e)
         {

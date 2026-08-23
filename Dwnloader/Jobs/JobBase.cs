@@ -32,6 +32,11 @@ public sealed class JobResult
     public string Path { get; init; } = "";
     public string Error { get; init; } = "";
     public int Missing { get; init; }
+    /// <summary>
+    /// 待っても状況が変わらない失敗（ログイン要求・非対応種別など）。
+    /// true なら自動再試行の対象から外す。
+    /// </summary>
+    public bool Permanent { get; init; }
 }
 
 /// <summary>ダウンロード1件。ギャラリーもメディアも同じ形にして、管理側から区別せず扱う。</summary>
@@ -70,10 +75,10 @@ public abstract class JobBase
     protected void Log(string level, string message)
         => Events.Log?.Invoke(level, message);
 
-    protected void Finish(bool ok, string path, string error, int missing = 0)
+    protected void Finish(bool ok, string path, string error, int missing = 0, bool permanent = false)
         => Events.Finished?.Invoke(JobId, new JobResult
         {
-            Ok = ok, Path = path, Error = error, Missing = missing,
+            Ok = ok, Path = path, Error = error, Missing = missing, Permanent = permanent,
         });
 
     public void DisposeCts()

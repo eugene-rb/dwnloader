@@ -14,17 +14,31 @@ public sealed class GalleryJob : JobBase
 
     private readonly HttpClient _client;
     private readonly string _reusePath;
+    private readonly int _minPages;
+    private readonly int _keepMissing;
 
     /// <summary>
     /// 再試行で、前回の不完全な PDF を置き換えたいときの出力先。
     /// 別名で出すと、壊れた方が綺麗な名前に居座り続けてしまう。
+    ///
+    /// minPages: reusePath を上書きしてよい最小ページ数（0なら常に上書き）。
+    /// 自動再試行が前回より悪い結果しか得られなかったとき、黙って良い方の
+    /// PDFを潰さないためのガード。手動再試行は常に0で無条件に上書きする。
+    ///
+    /// keepMissing: フロアに引っかかって既存ファイルを保持するとき、そのまま
+    /// 報告する欠落数。今回のページ総数から引き算して求めると、サイト側の
+    /// 事情でページ総数自体が前回より減っていた場合に 0 まで潰れてしまい
+    /// 「完全成功」として履歴に記録されてしまう。必ず前回の欠落数をそのまま渡す。
     /// </summary>
     public GalleryJob(string jobId, SourceRef reference, SettingsData settings,
-                      JobEvents events, HttpClient client, string reusePath = "")
+                      JobEvents events, HttpClient client, string reusePath = "",
+                      int minPages = 0, int keepMissing = 0)
         : base(jobId, reference, settings, events)
     {
         _client = client;
         _reusePath = reusePath;
+        _minPages = minPages;
+        _keepMissing = keepMissing;
     }
 
     public override async Task RunAsync()
@@ -66,6 +80,17 @@ public sealed class GalleryJob : JobBase
 
             Token.ThrowIfCancellationRequested();
 
+            if (_reusePath.Length > 0 && jpegs.Count < _minPages)
+            {
+                // 自動再試行のはずが、前回より取れたページが少なかった。このまま
+                // 上書きすると良い方のPDFを悪い方で潰してしまうので、既存ファイルを
+                // 保持したまま「前回と同じ欠落数」として終える。
+                Log("warn", $"{meta.Title}: 再試行しましたが前回より取得できたページが" +
+                            $"少なかったため（{jpegs.Count}/{meta.Images.Count}）、既存のファイルを保持します");
+                Finish(true, _reusePath, "", _keepMissing);
+                return;
+            }
+
             SetStatus(JobStatus.Building);
             PdfBuilder.Build(jpegs, outPath, BuildPdfMeta(meta), m => Log("warn", m));
 
@@ -80,8 +105,15 @@ public sealed class GalleryJob : JobBase
         }
         catch (UnsupportedException e)
         {
+            // うごイラなど、待っても状況が変わらない。自動再試行の対象外にする。
             Log("warn", $"{Reference.Url}: {e.Message}");
-            Finish(false, "", e.Message);
+            Finish(false, "", e.Message, permanent: true);
+        }
+        catch (AuthRequiredException e)
+        {
+            // ログインが必要、というのは待っても解決しない。ユーザーの操作が要る。
+            Log("warn", $"{Reference.Url}: {e.Message}");
+            Finish(false, "", e.Message, permanent: true);
         }
         catch (SiteException e)
         {
@@ -267,9 +299,20 @@ public sealed class GalleryJob : JobBase
                 Token.ThrowIfCancellationRequested();
                 if (!tried.Add(url)) continue;
 
-                var resp = await Net.GetWithRetryAsync(
-                    ctx.Client, url, current.Headers, ctx.Timeout, ctx.Retries,
-                    adapter.Limiter, Token).ConfigureAwait(false);
+                HttpResult resp;
+                try
+                {
+                    resp = await Net.GetWithRetryAsync(
+                        ctx.Client, url, current.Headers, ctx.Timeout, ctx.Retries,
+                        adapter.Limiter, Token).ConfigureAwait(false);
+                }
+                catch (TransientException)
+                {
+                    // この候補URLでは（内部の再試行を使い切っても）取れなかった。
+                    // ここで投げ返すと、フォールバック画質もURL作り直しも試さずに
+                    // ページを丸ごと失う。次の候補、無ければ次の試行に賭ける。
+                    continue;
+                }
 
                 if (!resp.IsOk) continue;
                 var data = resp.Body;

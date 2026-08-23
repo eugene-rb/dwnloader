@@ -113,6 +113,8 @@ public static class Net
             using var perRequest = CancellationTokenSource.CreateLinkedTokenSource(ct);
             perRequest.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
 
+            double? retryAfter = null;
+
             try
             {
                 // Referer などは共通ヘッダにできない（サイトごと・画像ごとに違う）ので
@@ -128,6 +130,10 @@ public static class Net
                 if (code == 429 || code >= 500)
                 {
                     last = new TransientException($"HTTP {code}");
+                    // 429 はサーバーが待ち時間を示してくることがある。無視して
+                    // 短い間隔で叩き直すと、レート制限中のサイトをさらに待たせる。
+                    if (code == 429 && resp.Headers.RetryAfter is { } ra)
+                        retryAfter = RetryAfterSeconds(ra);
                 }
                 else
                 {
@@ -151,15 +157,35 @@ public static class Net
             {
                 last = e;
             }
+            // ヘッダ受信後の本文読み取り中に接続が切れると、.NET は
+            // HttpRequestException ではなく IOException（の派生の HttpIOException）
+            // を投げる。ここを捕まえないと、1回の瞬断で再試行もフォールバックも
+            // 試さずページを丸ごと失う。
+            catch (IOException e)
+            {
+                last = e;
+            }
 
             if (attempt < attempts - 1)
             {
-                var backoff = Math.Min(Math.Pow(2, attempt), 8);
+                var backoff = retryAfter ?? Math.Min(Math.Pow(2, attempt), 8);
                 await Task.Delay(TimeSpan.FromSeconds(backoff), ct).ConfigureAwait(false);
             }
         }
 
         throw new TransientException($"{url} の取得に失敗しました: {last?.Message ?? "原因不明"}");
+    }
+
+    /// <summary>Retry-After ヘッダを秒数に直す。長すぎる指定は上限で切る。</summary>
+    private static double? RetryAfterSeconds(System.Net.Http.Headers.RetryConditionHeaderValue value)
+    {
+        if (value.Delta is { } delta) return Math.Clamp(delta.TotalSeconds, 0, 30);
+        if (value.Date is { } date)
+        {
+            var secs = (date - DateTimeOffset.UtcNow).TotalSeconds;
+            return secs > 0 ? Math.Clamp(secs, 0, 30) : null;
+        }
+        return null;
     }
 
     public static async Task<HttpResponseMessage> HeadAsync(
