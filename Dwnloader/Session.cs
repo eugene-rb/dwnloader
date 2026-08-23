@@ -116,6 +116,9 @@ public sealed class Session : IDisposable
         int stale = TempSweeper.Sweep();
         if (stale > 0) Log("info", $"前回の作業用フォルダ {stale} 件を削除しました");
 
+        int stalePages = PageCache.Sweep();
+        if (stalePages > 0) Log("info", $"長期間再試行されなかったページキャッシュ {stalePages} 件を削除しました");
+
         var supported = string.Join("・", SiteRegistry.Adapters.Select(a => a.Label));
         Log("info", $"{supported} に対応しています。URLをコピーすると自動で取り込みます。");
 

@@ -26,15 +26,17 @@ public static class PdfBuilder
     private const double DefaultDpi = 96.0;
 
     /// <summary>
-    /// JPEG をそのまま埋め込んで PDF にする。
+    /// JPEG をそのまま埋め込んで PDF にする。戻り値は PDF に入れられなかった
+    /// 枚数（呼び出し側はこれを欠落数に加算すること。加算し忘れると、
+    /// 実際には欠けたPDFが「完了」として履歴に記録されてしまう）。
     ///
     /// PdfSharp は JPEG を再エンコードせず /DCTDecode として格納するので、
     /// 画質が落ちず速い（Python 版の img2pdf と同じ性質）。
     /// 一時ファイルに書いてから置き換えるため、途中で失敗しても既存の
     /// PDF は壊れない。
     /// </summary>
-    public static void Build(IReadOnlyList<string> jpegPaths, string outPath,
-                             PdfMeta? meta = null, Action<string>? warn = null)
+    public static int Build(IReadOnlyList<string> jpegPaths, string outPath,
+                            PdfMeta? meta = null, Action<string>? warn = null)
     {
         if (jpegPaths.Count == 0)
             throw new PdfException("PDF に入れる画像がありません");
@@ -42,13 +44,13 @@ public static class PdfBuilder
         Directory.CreateDirectory(Path.GetDirectoryName(outPath)!);
         var tmp = outPath + ".part";
 
+        int skipped = 0;
         try
         {
             using (var doc = new PdfDocument())
             {
                 ApplyMeta(doc, meta);
 
-                int skipped = 0;
                 foreach (var path in jpegPaths)
                 {
                     try
@@ -72,6 +74,7 @@ public static class PdfBuilder
             }
 
             File.Move(tmp, outPath, overwrite: true);
+            return skipped;
         }
         catch (Exception e)
         {

@@ -92,11 +92,17 @@ public sealed class GalleryJob : JobBase
             }
 
             SetStatus(JobStatus.Building);
-            PdfBuilder.Build(jpegs, outPath, BuildPdfMeta(meta), m => Log("warn", m));
+            int pdfSkipped = PdfBuilder.Build(jpegs, outPath, BuildPdfMeta(meta), m => Log("warn", m));
+            int totalMissing = missing + pdfSkipped;
+
+            // 全ページ本当に揃った（PDFへの格納失敗も含めて0）ときだけキャッシュを消す。
+            // ここより前で消すと、PDF格納時に見つかった欠けがページキャッシュ側の
+            // 「取り直せる」チャンスまで一緒に消してしまう。
+            if (totalMissing == 0) PageCache.Clear(Reference);
 
             if (Settings.KeepImages) KeepImages(tmpdir, outPath);
 
-            Finish(true, outPath, "", missing);
+            Finish(true, outPath, "", totalMissing);
         }
         catch (OperationCanceledException)
         {
@@ -206,24 +212,34 @@ public sealed class GalleryJob : JobBase
             {
                 if (Token.IsCancellationRequested) return;
 
-                var (data, usedFmt) = await FetchImageAsync(image, meta, adapter, ctx, refreshGate)
-                    .ConfigureAwait(false);
-
-                if (keep)
-                {
-                    await File.WriteAllBytesAsync(
-                        Path.Combine(origDir, $"{image.Index:D5}.{usedFmt}"), data, Token)
-                        .ConfigureAwait(false);
-                }
-
-                // 実際に受け取った量をそのまま伝える（速度計はこの積み上げで測る）
-                Events.Bytes?.Invoke(data.Length);
-
                 var dest = Path.Combine(workdir, $"{image.Index:D5}.jpg");
-                // 復号と再圧縮は CPU を使う。UI と同じスレッドで回さないよう
-                // スレッドプールへ逃がす（await 元へ戻らないので UI は止まらない）。
-                await Task.Run(() => ImagePipeline.NormalizeToJpeg(data, dest, quality), Token)
-                    .ConfigureAwait(false);
+
+                // 前回の再試行で既に取れているページなら、通信も再エンコードも
+                // せずそのまま使う。結果として「失敗したページだけ」を取りに行く
+                // ことになる。壊れている・存在しないときは false が返るので、
+                // 普通に取得する（ページ欠落として扱われることはない）。
+                if (!PageCache.TryUse(Reference, image.Index, dest))
+                {
+                    var (data, usedFmt) = await FetchImageAsync(image, meta, adapter, ctx, refreshGate)
+                        .ConfigureAwait(false);
+
+                    if (keep)
+                    {
+                        await File.WriteAllBytesAsync(
+                            Path.Combine(origDir, $"{image.Index:D5}.{usedFmt}"), data, Token)
+                            .ConfigureAwait(false);
+                    }
+
+                    // 実際に受け取った量をそのまま伝える（速度計はこの積み上げで測る）
+                    Events.Bytes?.Invoke(data.Length);
+
+                    // 復号と再圧縮は CPU を使う。UI と同じスレッドで回さないよう
+                    // スレッドプールへ逃がす（await 元へ戻らないので UI は止まらない）。
+                    await Task.Run(() => ImagePipeline.NormalizeToJpeg(data, dest, quality), Token)
+                        .ConfigureAwait(false);
+
+                    PageCache.Save(Reference, image.Index, dest);
+                }
 
                 if (image.Index == 1)
                 {

@@ -27,7 +27,7 @@
     <NoWarn>$(NoWarn);WFAC010</NoWarn>
     <!-- 表示するバージョンはここ1か所に置く。vpk pack へ渡す packVersion と
          同じ値にすること（更新後に題名だけ古いまま、を防ぐ）。 -->
-    <Version>2.3.0</Version>
+    <Version>2.4.0</Version>
   </PropertyGroup>
 
   <ItemGroup>
