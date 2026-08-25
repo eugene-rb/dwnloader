@@ -31,6 +31,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- ApplicationIcon は exe の Win32 リソースに焼くだけで実行時に読めない。
+         トレイアイコンも同じ絵を使うため、WPF リソースとしても埋め込む。 -->
+    <Resource Include="app.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- AVIF / WebP の復号に必要。hitomi は既定で AVIF を配るため必須で、
          .NET 標準の画像デコーダも ImageSharp も AVIF を読めない。 -->
     <PackageReference Include="Magick.NET-Q8-AnyCPU" Version="14.16.0" />

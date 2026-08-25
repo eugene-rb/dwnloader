@@ -6,7 +6,7 @@ namespace Dwnloader;
 
 /// <summary>
 /// タスクトレイ常駐。ウィンドウを閉じても監視を続けられるようにする。
-/// アイコンは外部ファイルを持たず、その場で描く。
+/// アイコンは app.ico（WPF リソースとして埋め込み）から読み込む。
 /// </summary>
 public sealed class TrayIcon : IDisposable
 {
@@ -18,7 +18,7 @@ public sealed class TrayIcon : IDisposable
 
     private bool _watching = true;
     private string _status = "";
-    private readonly Icon _generated;
+    private readonly Icon _appIcon;
 
     public TrayIcon(Action onShow, Action onToggleWatch, Action onQuit)
     {
@@ -26,7 +26,7 @@ public sealed class TrayIcon : IDisposable
         _onToggleWatch = onToggleWatch;
         _onQuit = onQuit;
 
-        _generated = MakeIcon();
+        _appIcon = MakeIcon();
 
         _watchItem = new ToolStripMenuItem("クリップボード監視を停止", null, (_, _) => _onToggleWatch());
 
@@ -38,7 +38,7 @@ public sealed class TrayIcon : IDisposable
 
         _icon = new NotifyIcon
         {
-            Icon = _generated,
+            Icon = _appIcon,
             Text = AppInfo.Title,
             Visible = true,
             ContextMenuStrip = menu,
@@ -73,64 +73,21 @@ public sealed class TrayIcon : IDisposable
         }
     }
 
-    /// <summary>角丸の四角に "PDF" を描いたアイコンを作る。</summary>
-    private static Icon MakeIcon(int size = 32)
+    /// <summary>app.ico から、トレイの実サイズ（16/32px 等）に合う面を選んで読み込む。</summary>
+    private static Icon MakeIcon()
     {
-        using var bitmap = new Bitmap(size, size);
-        using (var g = Graphics.FromImage(bitmap))
+        var uri = new Uri("app.ico", UriKind.Relative);
+        var stream = System.Windows.Application.GetResourceStream(uri)!.Stream;
+        using (stream)
         {
-            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-            g.Clear(Color.Transparent);
-
-            int pad = Math.Max(1, size / 16);
-            var rect = new Rectangle(pad, pad, size - pad * 2, size - pad * 2);
-            using var brush = new SolidBrush(Color.FromArgb(255, 109, 140, 255));
-            using var path = RoundedRect(rect, size / 5);
-            g.FillPath(brush, path);
-
-            using var font = new Font("Segoe UI", size / 4.2f, FontStyle.Bold,
-                                      GraphicsUnit.Pixel);
-            using var text = new SolidBrush(Color.FromArgb(255, 11, 14, 21));
-            var format = new StringFormat
-            {
-                Alignment = StringAlignment.Center,
-                LineAlignment = StringAlignment.Center,
-            };
-            g.DrawString("PDF", font, text, rect, format);
-        }
-
-        // Icon.FromHandle が返すものは自前で破棄できないので、複製して持つ
-        IntPtr handle = bitmap.GetHicon();
-        try
-        {
-            using var temp = Icon.FromHandle(handle);
-            return (Icon)temp.Clone();
-        }
-        finally
-        {
-            DestroyIcon(handle);
+            return new Icon(stream, SystemInformation.SmallIconSize);
         }
     }
-
-    private static System.Drawing.Drawing2D.GraphicsPath RoundedRect(Rectangle r, int radius)
-    {
-        var path = new System.Drawing.Drawing2D.GraphicsPath();
-        int d = radius * 2;
-        path.AddArc(r.X, r.Y, d, d, 180, 90);
-        path.AddArc(r.Right - d, r.Y, d, d, 270, 90);
-        path.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
-        path.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
-        path.CloseFigure();
-        return path;
-    }
-
-    [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
-    private static extern bool DestroyIcon(IntPtr handle);
 
     public void Dispose()
     {
         _icon.Visible = false;
         _icon.Dispose();
-        _generated.Dispose();
+        _appIcon.Dispose();
     }
 }
