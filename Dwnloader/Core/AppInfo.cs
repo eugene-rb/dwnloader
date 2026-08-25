@@ -4,8 +4,8 @@ namespace Dwnloader.Core;
 
 public static class AppInfo
 {
-    public const string Name = "dwnloader";
-    public const string Title = "Gallery → PDF Downloader";
+    public const string Name = "dwnldr";
+    public const string Title = "Dwnldr";
 
     /// <summary>更新の確認先。</summary>
     public const string RepositoryUrl = "https://github.com/eugene-rb/dwnloader";
