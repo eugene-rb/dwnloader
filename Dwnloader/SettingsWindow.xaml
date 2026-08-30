@@ -15,6 +15,9 @@
 
     <Grid Padding="20,16" Background="Transparent">
         <Grid.Resources>
+            <Style x:Key="CompactPivotHeaderStyle" TargetType="PivotHeaderItem">
+                <Setter Property="FontSize" Value="12"/>
+            </Style>
             <Style x:Key="CardBorderStyle" TargetType="Border">
                 <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}"/>
                 <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}"/>
@@ -45,7 +48,7 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <Pivot Grid.Row="0">
+        <Pivot Grid.Row="0" ItemContainerStyle="{StaticResource CompactPivotHeaderStyle}">
             <PivotItem Header="保存先">
                 <ScrollViewer Padding="4,12,4,4">
                     <StackPanel MaxWidth="640" HorizontalAlignment="Left">
