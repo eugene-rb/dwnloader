@@ -1,0 +1,18 @@
+<UserControl x:Class="Dwnloader.SpeedGraph"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             SizeChanged="OnSizeChanged">
+    <Grid x:Name="RootGrid" Background="Transparent">
+        <Canvas x:Name="RootCanvas">
+            <Line x:Name="Grid1" Stroke="{ThemeResource DividerStrokeColorDefaultBrush}" StrokeThickness="1"/>
+            <Line x:Name="Grid2" Stroke="{ThemeResource DividerStrokeColorDefaultBrush}" StrokeThickness="1"/>
+            <Line x:Name="Grid3" Stroke="{ThemeResource DividerStrokeColorDefaultBrush}" StrokeThickness="1"/>
+            <Path x:Name="FillPath"/>
+            <Path x:Name="LinePath" Stroke="{ThemeResource AccentFillColorDefaultBrush}" StrokeThickness="1.6"/>
+            <TextBlock x:Name="ScaleLabel" FontFamily="Consolas" FontSize="11"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" Canvas.Left="4" Canvas.Top="2"/>
+            <TextBlock x:Name="CurrentLabel" FontFamily="Consolas" FontSize="11"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" Canvas.Left="4"/>
+        </Canvas>
+    </Grid>
+</UserControl>

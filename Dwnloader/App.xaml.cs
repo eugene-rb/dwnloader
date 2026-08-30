@@ -1,7 +1,7 @@
 using System.IO;
-using System.Windows;
-using System.Windows.Threading;
 using Dwnloader.Core;
+using Microsoft.UI.Dispatching;
+using Microsoft.UI.Xaml;
 using Velopack;
 
 namespace Dwnloader;
@@ -16,12 +16,11 @@ public partial class App : Application
     private TrayIcon? _tray;
     private MainWindow? _window;
     private UpdateService? _updates;
+    private DispatcherQueue? _uiQueue;
     private bool _shuttingDown;
 
-    protected override void OnStartup(StartupEventArgs e)
+    public App()
     {
-        base.OnStartup(e);
-
         // インストール・更新・アンインストールの後始末は、他の何よりも先に行う。
         // Velopack は本体を --veloapp-* 付きで呼び直して処理させるため、
         // 多重起動の判定より後ろに置くと「2つ目の起動」とみなされて素通りし、
@@ -35,67 +34,55 @@ public partial class App : Application
             LogCrash(ex);       // 更新まわりの失敗でアプリを起動不能にしない
         }
 
+        InitializeComponent();
+
+        // 想定外の例外でアプリごと消えないようにする。1件の失敗より、
+        // 常駐が死ぬ方が困る。
+        UnhandledException += OnDispatcherException;
+        AppDomain.CurrentDomain.UnhandledException += OnDomainException;
+        TaskScheduler.UnobservedTaskException += (_, args) => args.SetObserved();
+
+        // WinUI3 の LaunchActivatedEventArgs はコマンドライン引数を運ばないため、
+        // ここで自前に取得する（先頭はexeパスなので読み飛ばす）。
+        var args = Environment.GetCommandLineArgs().Skip(1).ToArray();
+
         // 自己テストは画面を出さずに走らせる（移植の突き合わせ用）
-        if (e.Args.Any(a => a.Equals("--selftest", StringComparison.OrdinalIgnoreCase)))
+        if (args.Any(a => a.Equals("--selftest", StringComparison.OrdinalIgnoreCase)))
         {
-            int code = SelfTest.Run();
-            Shutdown(code);
-            return;
+            Environment.Exit(SelfTest.Run());
         }
 
         // Python 版との突き合わせ用に、同じ入力への答えを JSON で吐く
-        if (e.Args.Any(a => a.Equals("--dump", StringComparison.OrdinalIgnoreCase)))
+        if (args.Any(a => a.Equals("--dump", StringComparison.OrdinalIgnoreCase)))
         {
-            int code = Compare.Run();
-            Shutdown(code);
-            return;
+            Environment.Exit(Compare.Run());
         }
 
-        bool checkUpdate = e.Args.Any(a => a.Equals("--checkupdate", StringComparison.OrdinalIgnoreCase));
-        bool applyUpdate = e.Args.Any(a => a.Equals("--applyupdate", StringComparison.OrdinalIgnoreCase));
+        bool checkUpdate = args.Any(a => a.Equals("--checkupdate", StringComparison.OrdinalIgnoreCase));
+        bool applyUpdate = args.Any(a => a.Equals("--applyupdate", StringComparison.OrdinalIgnoreCase));
         if (checkUpdate || applyUpdate)
         {
-            _ = Task.Run(async () =>
-            {
-                int code = await Compare.RunUpdateAsync(applyUpdate).ConfigureAwait(false);
-                Dispatcher.Invoke(() => Shutdown(code));
-            });
-            return;
+            Environment.Exit(Compare.RunUpdateAsync(applyUpdate).GetAwaiter().GetResult());
         }
 
-        if (e.Args.Any(a => a.Equals("--speedtest", StringComparison.OrdinalIgnoreCase)))
+        if (args.Any(a => a.Equals("--speedtest", StringComparison.OrdinalIgnoreCase)))
         {
-            _ = Task.Run(() =>
-            {
-                int code = Compare.RunSpeedTest();
-                Dispatcher.Invoke(() => Shutdown(code));
-            });
-            return;
+            Environment.Exit(Compare.RunSpeedTest());
         }
 
         // yt-dlp を実際に動かして1本落とす
-        int mediaAt = Array.FindIndex(e.Args,
+        int mediaAt = Array.FindIndex(args,
             a => a.Equals("--media", StringComparison.OrdinalIgnoreCase));
-        if (mediaAt >= 0 && mediaAt + 1 < e.Args.Length)
+        if (mediaAt >= 0 && mediaAt + 1 < args.Length)
         {
-            var target = e.Args[mediaAt + 1];
-            _ = Task.Run(async () =>
-            {
-                int code = await Compare.RunMediaAsync(target).ConfigureAwait(false);
-                Dispatcher.Invoke(() => Shutdown(code));
-            });
-            return;
+            var target = args[mediaAt + 1];
+            Environment.Exit(Compare.RunMediaAsync(target).GetAwaiter().GetResult());
         }
 
         // 実サーバ・実データで、出荷するコードそのものを通す
-        if (e.Args.Any(a => a.Equals("--live", StringComparison.OrdinalIgnoreCase)))
+        if (args.Any(a => a.Equals("--live", StringComparison.OrdinalIgnoreCase)))
         {
-            _ = Task.Run(async () =>
-            {
-                int code = await Compare.RunLiveAsync().ConfigureAwait(false);
-                Dispatcher.Invoke(() => Shutdown(code));
-            });
-            return;
+            Environment.Exit(Compare.RunLiveAsync().GetAwaiter().GetResult());
         }
 
         // 2つ動くと同じURLを両方が拾って二重にダウンロードしてしまう。
@@ -104,15 +91,13 @@ public partial class App : Application
         if (!_guard.IsPrimary)
         {
             SingleInstance.Signal();
-            Shutdown(0);
-            return;
+            Environment.Exit(0);
         }
+    }
 
-        // 想定外の例外でアプリごと消えないようにする。1件の失敗より、
-        // 常駐が死ぬ方が困る。
-        DispatcherUnhandledException += OnDispatcherException;
-        AppDomain.CurrentDomain.UnhandledException += OnDomainException;
-        TaskScheduler.UnobservedTaskException += (_, args) => args.SetObserved();
+    protected override void OnLaunched(LaunchActivatedEventArgs args)
+    {
+        _uiQueue = DispatcherQueue.GetForCurrentThread();
 
         Directory.CreateDirectory(AppPaths.ConfigDir);
 
@@ -120,12 +105,12 @@ public partial class App : Application
         _history = new History();
         _queueStore = new QueueStore();
 
-        _session = new Session(Dispatcher, _settings, _history, _queueStore);
+        _session = new Session(_uiQueue, _settings, _history, _queueStore);
 
         _tray = new TrayIcon(
-            onShow: () => Dispatcher.Invoke(() => _window?.ShowFromTray()),
-            onToggleWatch: () => Dispatcher.Invoke(() => _session?.ToggleWatch()),
-            onQuit: () => Dispatcher.Invoke(QuitAll));
+            onShow: () => _uiQueue?.TryEnqueue(() => _window?.ShowFromTray()),
+            onToggleWatch: () => _uiQueue?.TryEnqueue(() => _session?.ToggleWatch()),
+            onQuit: () => _uiQueue?.TryEnqueue(QuitAll));
 
         _updates = new UpdateService();
 
@@ -133,9 +118,9 @@ public partial class App : Application
         _window.Attach(_session, _tray, _updates);
         _window.Closed += (_, _) => QuitAll();
 
-        _guard.Listen(() => Dispatcher.Invoke(() => _window?.ShowFromTray()));
+        _guard!.Listen(() => _uiQueue?.TryEnqueue(() => _window?.ShowFromTray()));
 
-        _window.Show();
+        _window.Activate();
     }
 
     private void QuitAll()
@@ -151,16 +136,17 @@ public partial class App : Application
         _queueStore?.Dispose();
         _guard?.Dispose();
 
-        Shutdown(0);
+        Environment.Exit(0);
     }
 
-    private void OnDispatcherException(object sender, DispatcherUnhandledExceptionEventArgs e)
+    /// <summary>想定外の例外でアプリごと消えないようにする。1件の失敗より、常駐が死ぬ方が困る。</summary>
+    private void OnDispatcherException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
     {
         LogCrash(e.Exception);
-        e.Handled = true;               // UI スレッドの例外で落とさない
+        e.Handled = true;
     }
 
-    private void OnDomainException(object sender, UnhandledExceptionEventArgs e)
+    private void OnDomainException(object sender, System.UnhandledExceptionEventArgs e)
     {
         if (e.ExceptionObject is Exception ex) LogCrash(ex);
     }

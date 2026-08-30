@@ -1,119 +1,103 @@
 <Window x:Class="Dwnloader.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:local="clr-namespace:Dwnloader"
-        Title="Dwnldr"
-        Height="760" Width="1040" MinHeight="360" MinWidth="560"
-        WindowStartupLocation="CenterScreen"
-        Background="#FF070A12" Foreground="#FFF4F7FF"
-        UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
+        xmlns:local="using:Dwnloader"
+        Title="Dwnldr">
+
+    <Window.SystemBackdrop>
+        <MicaBackdrop/>
+    </Window.SystemBackdrop>
 
     <!--
         枠は Windows 標準のものを使う。自前のタイトルバーにすると、移動や
         リサイズを自分で実装することになり、そこが重い処理と competing して
         「ドラッグできない」不具合の温床になる。標準の枠なら OS が処理する。
+
+        Mica の適用は上の <Window.SystemBackdrop> だけで済む
+        （ExtendsContentIntoTitleBar は使わない — 使うと上のコメントの
+        標準タイトルバーを手放すことになる）。WPF版で自前の DWM P/Invoke
+        が必要だったのと違い、WinUI3 はこれだけで標準タイトルバーと
+        Mica が両立する（使い捨てプロトタイプ scratchpad/winui3proto で検証済み）。
+
+        リソースは Window.Resources ではなく直下 Grid の Grid.Resources に置く。
+        WinUI3 の Window は WPF と違い FrameworkElement を継承しておらず
+        Resources プロパティを持たない（XamlCompiler error WMC0011: Unknown
+        member 'Resources' on element 'Window' — dotnet build のXamlCompiler
+        はこのエラーを無出力のexit code 1として握りつぶすため、VS付属の
+        MSBuild.exeで直接ビルドして初めて判明した）。
+
+        配色は独自パレットを持たない。Win11 の設定アプリ等と見分けがつかない
+        ことを狙っているため、色は一切ハードコードせず、XamlControlsResources
+        (App.xaml でマージ済み) が提供する標準テーマブラシ
+        (CardBackgroundFillColorDefaultBrush 等) だけを使う。これなら
+        ライト/ダーク切り替えにもシステムのアクセントカラー変更にも
+        自動で追従する。Mica を殺す不透明ブラシ (ApplicationPageBackgroundThemeBrush,
+        SolidBackgroundFillColorBase) は全面的に避ける。
     -->
 
-    <Window.Resources>
-        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
-        <LinearGradientBrush x:Key="AppBg" StartPoint="0,0" EndPoint="1,1">
-            <GradientStop Color="#FF070A12" Offset="0"/>
-            <GradientStop Color="#FF0C1224" Offset="0.48"/>
-            <GradientStop Color="#FF120A20" Offset="1"/>
-        </LinearGradientBrush>
-        <SolidColorBrush x:Key="Panel" Color="#CC111827"/>
-        <SolidColorBrush x:Key="PanelHi" Color="#E6172236"/>
-        <SolidColorBrush x:Key="PanelHover" Color="#F01E2D4C"/>
-        <SolidColorBrush x:Key="Line" Color="#FF293752"/>
-        <SolidColorBrush x:Key="LineHot" Color="#FF38D5FF"/>
-        <SolidColorBrush x:Key="Muted" Color="#FF9AA8C7"/>
-        <SolidColorBrush x:Key="Accent" Color="#FF38D5FF"/>
-        <SolidColorBrush x:Key="Success" Color="#FF4DFFB2"/>
+    <Grid>
+        <Grid.Resources>
+            <local:BoolToVisibilityConverter x:Key="BoolToVis"/>
 
-        <Style TargetType="Button">
-            <Setter Property="Padding" Value="12,6"/>
-            <Setter Property="Margin" Value="0,0,7,0"/>
-            <Setter Property="Background" Value="#FF142033"/>
-            <Setter Property="Foreground" Value="#FFF4F7FF"/>
-            <Setter Property="BorderBrush" Value="{StaticResource Line}"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="Bd" CornerRadius="7"
-                                Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}">
-                            <ContentPresenter HorizontalAlignment="Center"
-                                              VerticalAlignment="Center"
-                                              Margin="{TemplateBinding Padding}"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#FF1D3154"/>
-                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource LineHot}"/>
-                                <Setter Property="Foreground" Value="#FFFFFFFF"/>
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter Property="Opacity" Value="0.45"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
+            <!-- カード: Win11 設定アプリの行と同じ、標準の CardXxx テーマブラシだけで組む -->
+            <Style x:Key="CardBorderStyle" TargetType="Border">
+                <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}"/>
+                <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="CornerRadius" Value="8"/>
+            </Style>
 
-        <Style TargetType="TextBox">
-            <Setter Property="Background" Value="#CC080D18"/>
-            <Setter Property="Foreground" Value="#FFF4F7FF"/>
-            <Setter Property="BorderBrush" Value="#FF334669"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="9,6"/>
-            <Setter Property="CaretBrush" Value="{StaticResource Accent}"/>
-        </Style>
+            <Style x:Key="EntryItemStyle" TargetType="ListViewItem">
+                <Setter Property="Padding" Value="0"/>
+                <Setter Property="Margin" Value="0,0,0,8"/>
+                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            </Style>
+        </Grid.Resources>
 
-        <Style TargetType="CheckBox">
-            <Setter Property="Foreground" Value="#FFF4F7FF"/>
-            <Setter Property="VerticalAlignment" Value="Center"/>
-        </Style>
-    </Window.Resources>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
 
-    <DockPanel Background="{StaticResource AppBg}">
-        <!-- 上段: 操作 -->
-        <Border DockPanel.Dock="Top" Background="{StaticResource Panel}"
-                BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="12,10">
-            <StackPanel>
-                <StackPanel Orientation="Horizontal" Margin="0,0,0,7">
-                    <TextBox x:Name="UrlInput" Width="440" Height="30"
-                             VerticalContentAlignment="Center"
+        <!-- 上段: 操作。設定アプリのヘッダーに倣い、背景は敷かず下線だけで区切る -->
+        <Border Grid.Row="0" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+                BorderThickness="0,0,0,1" Padding="24,20,24,16">
+            <StackPanel Spacing="12">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBox x:Name="UrlInput" Width="440"
+                             VerticalAlignment="Center"
                              KeyDown="UrlInput_KeyDown"
-                             ToolTip="URLを貼り付けて Enter。複数行まとめて貼れます。"/>
-                    <Button Content="追加" Click="Add_Click" Margin="6,0,14,0"/>
+                             ToolTipService.ToolTip="URLを貼り付けて Enter。複数行まとめて貼れます。"/>
+                    <Button Content="追加" Click="Add_Click" Style="{StaticResource AccentButtonStyle}"/>
+
+                    <Rectangle Width="1" Margin="8,4" Fill="{ThemeResource DividerStrokeColorDefaultBrush}"/>
 
                     <CheckBox x:Name="WatchToggle" Content="クリップボード監視"
-                              Checked="Watch_Changed" Unchecked="Watch_Changed" Margin="0,0,14,0"/>
+                              Checked="Watch_Changed" Unchecked="Watch_Changed"/>
 
-                    <TextBlock Text="種別:" VerticalAlignment="Center"
-                               Foreground="{StaticResource Muted}" Margin="0,0,6,0"/>
-                    <ComboBox x:Name="KindBox" Width="76" Height="26"
-                              SelectionChanged="Kind_Changed" VerticalContentAlignment="Center">
+                    <TextBlock Text="種別" VerticalAlignment="Center"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" Margin="8,0,0,0"/>
+                    <ComboBox x:Name="KindBox" Width="86"
+                              SelectionChanged="Kind_Changed" VerticalAlignment="Center">
                         <ComboBoxItem Content="動画" Tag="video"/>
                         <ComboBoxItem Content="音声" Tag="audio"/>
                     </ComboBox>
 
                     <CheckBox x:Name="PlaylistToggle" Content="リスト全体"
                               Checked="Playlist_Changed" Unchecked="Playlist_Changed"
-                              Margin="12,0,0,0"
-                              ToolTip="オフなら再生リスト・チャンネルは先頭の1本だけ取得します"/>
+                              Margin="8,0,0,0"
+                              ToolTipService.ToolTip="オフなら再生リスト・チャンネルは先頭の1本だけ取得します"/>
                 </StackPanel>
 
-                <StackPanel Orientation="Horizontal">
+                <StackPanel Orientation="Horizontal" Spacing="8">
                     <Button x:Name="StartAllBtn" Content="待機中を開始" Click="StartAll_Click"/>
                     <Button x:Name="RetryAllBtn" Content="未完了を再試行" Click="RetryAll_Click"/>
                     <Button Content="完了を消す" Click="ClearFinished_Click"/>
                     <Button Content="全部消す" Click="ClearAll_Click"/>
-                    <Separator Margin="6,4" Background="{StaticResource Line}"/>
+                    <Rectangle Width="1" Margin="8,4" Fill="{ThemeResource DividerStrokeColorDefaultBrush}"/>
                     <Button Content="PDFフォルダ" Click="OpenPdfDir_Click"/>
                     <Button Content="動画フォルダ" Click="OpenVideoDir_Click"/>
                     <Button Content="音声フォルダ" Click="OpenAudioDir_Click"/>
@@ -122,197 +106,149 @@
             </StackPanel>
         </Border>
 
-        <!-- 下段: 状態とログ -->
-        <Border DockPanel.Dock="Bottom" Background="{StaticResource Panel}"
-                BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Padding="12,8">
-            <DockPanel>
-                <Button DockPanel.Dock="Right" x:Name="UpdateBtn" Content="更新"
-                        Click="Update_Click" Margin="6,0,0,0" Visibility="Collapsed"
-                        Background="#FF2E7D5B" BorderBrush="#FF3E9E75"/>
-                <Button DockPanel.Dock="Right" Content="ログ" Click="ToggleLog_Click" Margin="6,0,0,0"/>
-                <Button DockPanel.Dock="Right" Content="速度" Click="ToggleSpeed_Click" Margin="6,0,0,0"/>
-                <TextBlock DockPanel.Dock="Right" x:Name="SpeedText" Text=""
-                           VerticalAlignment="Center" Margin="12,0,0,0"
-                           FontFamily="Consolas" Foreground="{StaticResource Success}"/>
-                <TextBlock x:Name="StatusText" Text="" VerticalAlignment="Center"
-                           TextTrimming="CharacterEllipsis" Foreground="{StaticResource Muted}"/>
-            </DockPanel>
-        </Border>
+        <!--
+            一覧は必ず仮想化する。ListView は既定で ItemsStackPanel による
+            UI仮想化(リサイクリング)を行うため、WPF版のような明示指定は不要。
+        -->
+        <ListView x:Name="EntryList" Grid.Row="1"
+                  Background="Transparent"
+                  Padding="24,16,24,8"
+                  SelectionMode="Extended"
+                  ItemContainerStyle="{StaticResource EntryItemStyle}"
+                  DoubleTapped="EntryList_DoubleTapped"
+                  KeyDown="EntryList_KeyDown">
+            <ListView.ItemTemplate>
+                <DataTemplate x:DataType="local:EntryVm">
+                    <Border Style="{StaticResource CardBorderStyle}">
+                        <Grid Padding="12,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="54"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
 
-        <Border x:Name="SpeedPane" DockPanel.Dock="Bottom" Height="118"
-                Visibility="Collapsed" Background="#99070C16"
-                BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0">
-            <DockPanel>
-                <StackPanel DockPanel.Dock="Right" Width="150" Margin="10,8"
-                            VerticalAlignment="Center">
-                    <TextBlock Text="現在の速度" FontSize="10"
-                               Foreground="{StaticResource Muted}"/>
-                    <TextBlock x:Name="SpeedNow" Text="—" FontSize="19"
-                               FontFamily="Consolas" Foreground="{StaticResource Accent}"/>
-                    <TextBlock x:Name="SpeedPeak" Text="" FontSize="10" Margin="0,6,0,0"
-                               Foreground="{StaticResource Muted}"/>
-                    <TextBlock x:Name="SpeedTotal" Text="" FontSize="10"
-                               Foreground="{StaticResource Muted}"/>
-                    <TextBlock x:Name="SpeedActive" Text="" FontSize="10"
-                               Foreground="{StaticResource Muted}"/>
-                </StackPanel>
-                <local:SpeedGraph x:Name="Graph" Margin="0"/>
-            </DockPanel>
-        </Border>
+                            <Border Grid.Column="0" Width="46" Height="64" CornerRadius="4"
+                                    Background="{ThemeResource ControlFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                    BorderThickness="1" VerticalAlignment="Center">
+                                <Image Source="{Binding Thumb}" Stretch="UniformToFill"/>
+                            </Border>
 
-        <Grid x:Name="LogPane" DockPanel.Dock="Bottom" Height="150" Visibility="Collapsed">
-            <ListBox x:Name="LogList" Background="#CC060912" Foreground="#FFD5DDF2"
-                     BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0"
-                     FontFamily="Consolas" FontSize="11"
-                     ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                     VirtualizingStackPanel.IsVirtualizing="True"
-                     VirtualizingStackPanel.VirtualizationMode="Recycling"/>
+                            <StackPanel Grid.Column="1" Margin="12,0" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="SemiBold"
+                                           TextTrimming="CharacterEllipsis"
+                                           ToolTipService.ToolTip="{Binding Url}"/>
+                                <TextBlock Text="{Binding Subtitle}" FontSize="11"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
+
+                                <Grid Margin="0,6,0,0">
+                                    <ProgressBar Height="4" Minimum="0" Maximum="100"
+                                                 Value="{Binding Percent, Mode=OneWay}"
+                                                 IsIndeterminate="{Binding IsIndeterminate}"
+                                                 Visibility="{Binding ShowProgress, Converter={StaticResource BoolToVis}}"/>
+                                    <TextBlock Text="{Binding Message}" FontSize="11"
+                                               Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                               TextTrimming="CharacterEllipsis"
+                                               Visibility="{Binding ShowMessage, Converter={StaticResource BoolToVis}}"/>
+                                </Grid>
+
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0" Spacing="8">
+                                    <Border Background="{ThemeResource AccentFillColorTertiaryBrush}"
+                                            CornerRadius="4" Padding="6,1">
+                                        <TextBlock Text="{Binding SiteLabel}" FontSize="10"
+                                                   Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
+                                    </Border>
+                                    <TextBlock Text="{Binding StatusLabel}" FontSize="10"
+                                               Foreground="{Binding StatusBrush}"/>
+                                    <TextBlock Text="{Binding Detail}" FontSize="10"
+                                               Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                               TextTrimming="CharacterEllipsis"/>
+                                </StackPanel>
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Spacing="4">
+                                <Button Content="開く" Click="Open_Click" Tag="{Binding JobId}"
+                                        Visibility="{Binding CanOpen, Converter={StaticResource BoolToVis}}"/>
+                                <Button Content="場所" Click="Reveal_Click" Tag="{Binding JobId}"
+                                        Visibility="{Binding CanOpen, Converter={StaticResource BoolToVis}}"/>
+                                <Button Content="再試行" Click="Retry_Click" Tag="{Binding JobId}"
+                                        Visibility="{Binding CanRetry, Converter={StaticResource BoolToVis}}"/>
+                                <Button Content="中止" Click="Cancel_Click" Tag="{Binding JobId}"
+                                        Visibility="{Binding CanCancel, Converter={StaticResource BoolToVis}}"/>
+                                <Button Content="{Binding KindSwapLabel}" Click="SwapKind_Click"
+                                        Tag="{Binding JobId}"
+                                        Visibility="{Binding CanSwitchKind, Converter={StaticResource BoolToVis}}"/>
+                                <Button Content="ページ" Click="Page_Click" Tag="{Binding JobId}"/>
+                                <Button Content="&#x2715;" Click="Remove_Click" Tag="{Binding JobId}"
+                                        ToolTipService.ToolTip="この行を消す"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+
+        <Grid x:Name="LogPane" Grid.Row="2" Height="150" Visibility="Collapsed" Margin="24,0,24,8">
+            <Border Style="{StaticResource CardBorderStyle}">
+                <ListView x:Name="LogList" Background="Transparent" Padding="8"
+                          FontFamily="Consolas" FontSize="11">
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding}" Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+            </Border>
         </Grid>
 
-        <!--
-            一覧は必ず仮想化する。ItemsControl を ScrollViewer に入れた形だと
-            全件が実体化してしまい、数百件で描画が固まる。ListBox + Recycling なら
-            画面に見えている行しか作らない。
-        -->
-        <ListBox x:Name="EntryList"
-                 Background="Transparent" BorderThickness="0"
-                 HorizontalContentAlignment="Stretch"
-                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                 ScrollViewer.IsDeferredScrollingEnabled="True"
-                 VirtualizingStackPanel.IsVirtualizing="True"
-                 VirtualizingStackPanel.VirtualizationMode="Recycling"
-                 VirtualizingStackPanel.ScrollUnit="Pixel"
-                 SelectionMode="Extended"
-                 MouseDoubleClick="EntryList_DoubleClick"
-                 KeyDown="EntryList_KeyDown">
-            <ListBox.ItemContainerStyle>
-                <Style TargetType="ListBoxItem">
-                    <Setter Property="Padding" Value="0"/>
-                    <Setter Property="Margin" Value="8,4"/>
-                    <Setter Property="Background" Value="{StaticResource PanelHi}"/>
-                    <Setter Property="Template">
-                        <Setter.Value>
-                            <ControlTemplate TargetType="ListBoxItem">
-                                <Border x:Name="Bd" CornerRadius="8"
-                                        Background="{TemplateBinding Background}"
-                                        BorderBrush="{StaticResource Line}" BorderThickness="1">
-                                    <ContentPresenter/>
-                                </Border>
-                                <ControlTemplate.Triggers>
-                                    <Trigger Property="IsSelected" Value="True">
-                                        <Setter TargetName="Bd" Property="BorderBrush"
-                                                Value="{StaticResource Accent}"/>
-                                        <Setter TargetName="Bd" Property="Background" Value="#F01A2743"/>
-                                    </Trigger>
-                                    <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter TargetName="Bd" Property="Background" Value="{StaticResource PanelHover}"/>
-                                        <Setter TargetName="Bd" Property="BorderBrush" Value="#FF596BFF"/>
-                                    </Trigger>
-                                </ControlTemplate.Triggers>
-                            </ControlTemplate>
-                        </Setter.Value>
-                    </Setter>
-                </Style>
-            </ListBox.ItemContainerStyle>
+        <Border x:Name="SpeedPane" Grid.Row="3" Height="118"
+                Visibility="Collapsed" Margin="24,0,24,8"
+                Style="{StaticResource CardBorderStyle}">
+            <Grid Padding="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="150"/>
+                </Grid.ColumnDefinitions>
+                <local:SpeedGraph x:Name="Graph" Grid.Column="0" Margin="0"/>
+                <StackPanel Grid.Column="1" Margin="10,0,0,0"
+                            VerticalAlignment="Center">
+                    <TextBlock Text="現在の速度" FontSize="10"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    <TextBlock x:Name="SpeedNow" Text="—" FontSize="19"
+                               FontFamily="Consolas" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
+                    <TextBlock x:Name="SpeedPeak" Text="" FontSize="10" Margin="0,8,0,0"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    <TextBlock x:Name="SpeedTotal" Text="" FontSize="10"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    <TextBlock x:Name="SpeedActive" Text="" FontSize="10"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                </StackPanel>
+            </Grid>
+        </Border>
 
-            <ListBox.ItemTemplate>
-                <DataTemplate DataType="{x:Type local:EntryVm}">
-                    <Grid Height="76" Margin="8,6">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="54"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-
-                        <Border Grid.Column="0" Width="46" Height="64" CornerRadius="5"
-                                Background="#FF070C16" BorderBrush="#6638D5FF"
-                                BorderThickness="1" VerticalAlignment="Center">
-                            <Image Source="{Binding Thumb}" Stretch="UniformToFill"/>
-                        </Border>
-
-                        <StackPanel Grid.Column="1" Margin="10,0" VerticalAlignment="Center">
-                            <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="SemiBold"
-                                       TextTrimming="CharacterEllipsis"
-                                       ToolTip="{Binding Url}"/>
-                            <TextBlock Text="{Binding Subtitle}" FontSize="11"
-                                       Foreground="{StaticResource Muted}"
-                                       TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
-
-                            <Grid Margin="0,4,0,0">
-                                <ProgressBar Height="4" Minimum="0" Maximum="100"
-                                             Value="{Binding Percent, Mode=OneWay}"
-                                             IsIndeterminate="{Binding IsIndeterminate}"
-                                             Background="#FF07101F" Foreground="{StaticResource Accent}"
-                                             BorderThickness="0">
-                                    <ProgressBar.Style>
-                                        <Style TargetType="ProgressBar">
-                                            <Setter Property="Visibility" Value="Collapsed"/>
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding ShowProgress}" Value="True">
-                                                    <Setter Property="Visibility" Value="Visible"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </ProgressBar.Style>
-                                </ProgressBar>
-                                <TextBlock Text="{Binding Message}" FontSize="11"
-                                           Foreground="#FFE08A8A"
-                                           TextTrimming="CharacterEllipsis">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock">
-                                            <Setter Property="Visibility" Value="Collapsed"/>
-                                            <Style.Triggers>
-                                                <MultiDataTrigger>
-                                                    <MultiDataTrigger.Conditions>
-                                                        <Condition Binding="{Binding HasMessage}" Value="True"/>
-                                                        <Condition Binding="{Binding ShowProgress}" Value="False"/>
-                                                    </MultiDataTrigger.Conditions>
-                                                    <Setter Property="Visibility" Value="Visible"/>
-                                                </MultiDataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
-                            </Grid>
-
-                            <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                                <Border Background="#331FE8B8" BorderBrush="#6638D5FF"
-                                        BorderThickness="1" CornerRadius="4" Padding="6,1">
-                                    <TextBlock Text="{Binding SiteLabel}" FontSize="10"
-                                               Foreground="{StaticResource Accent}"/>
-                                </Border>
-                                <TextBlock Text="{Binding StatusLabel}" FontSize="10" Margin="6,0,0,0"
-                                           Foreground="{Binding StatusBrush}"/>
-                                <TextBlock Text="{Binding Detail}" FontSize="10" Margin="6,0,0,0"
-                                           Foreground="{StaticResource Muted}"
-                                           TextTrimming="CharacterEllipsis"/>
-                            </StackPanel>
-                        </StackPanel>
-
-                        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                            <Button Content="開く" Click="Open_Click" Tag="{Binding JobId}"
-                                    Visibility="{Binding CanOpen,
-                                        Converter={StaticResource BoolToVis}}"/>
-                            <Button Content="場所" Click="Reveal_Click" Tag="{Binding JobId}"
-                                    Visibility="{Binding CanOpen,
-                                        Converter={StaticResource BoolToVis}}"/>
-                            <Button Content="再試行" Click="Retry_Click" Tag="{Binding JobId}"
-                                    Visibility="{Binding CanRetry,
-                                        Converter={StaticResource BoolToVis}}"/>
-                            <Button Content="中止" Click="Cancel_Click" Tag="{Binding JobId}"
-                                    Visibility="{Binding CanCancel,
-                                        Converter={StaticResource BoolToVis}}"/>
-                            <Button Content="{Binding KindSwapLabel}" Click="SwapKind_Click"
-                                    Tag="{Binding JobId}"
-                                    Visibility="{Binding CanSwitchKind,
-                                        Converter={StaticResource BoolToVis}}"/>
-                            <Button Content="ページ" Click="Page_Click" Tag="{Binding JobId}"/>
-                            <Button Content="✕" Click="Remove_Click" Tag="{Binding JobId}"
-                                    ToolTip="この行を消す"/>
-                        </StackPanel>
-                    </Grid>
-                </DataTemplate>
-            </ListBox.ItemTemplate>
-        </ListBox>
-    </DockPanel>
+        <!-- 下段: 状態とログ -->
+        <Border Grid.Row="4" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+                BorderThickness="0,1,0,0" Padding="24,12">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" x:Name="StatusText" Text="" VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                <TextBlock Grid.Column="1" x:Name="SpeedText" Text=""
+                           VerticalAlignment="Center" Margin="12,0,0,0"
+                           FontFamily="Consolas" Foreground="{ThemeResource SystemFillColorSuccessBrush}"/>
+                <Button Grid.Column="2" Content="速度" Click="ToggleSpeed_Click" Margin="8,0,0,0"/>
+                <Button Grid.Column="3" Content="ログ" Click="ToggleLog_Click" Margin="8,0,0,0"/>
+                <Button Grid.Column="4" x:Name="UpdateBtn" Content="更新"
+                        Click="Update_Click" Margin="8,0,0,0" Visibility="Collapsed"
+                        Style="{StaticResource AccentButtonStyle}"/>
+            </Grid>
+        </Border>
+    </Grid>
 </Window>

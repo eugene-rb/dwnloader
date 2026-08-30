@@ -189,7 +189,7 @@ public static class CookieStore
     // ------------------------------------------------------------ 変換（テスト対象）
 
     /// <summary>HTTP の Cookie ヘッダの値を組み立てる。</summary>
-    internal static string ToHeader(IEnumerable<StoredCookie> cookies) =>
+    public static string ToHeader(IEnumerable<StoredCookie> cookies) =>
         string.Join("; ", cookies
             .Where(c => c.Name.Length > 0)
             .Select(c => $"{c.Name}={c.Value}"));
@@ -226,7 +226,7 @@ public static class CookieStore
     }
 
     /// <summary>期限切れを外し、同じ Cookie は後から来た方を残す。</summary>
-    internal static List<StoredCookie> Alive(IEnumerable<StoredCookie> cookies)
+    public static List<StoredCookie> Alive(IEnumerable<StoredCookie> cookies)
     {
         long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         var byKey = new Dictionary<string, StoredCookie>(StringComparer.Ordinal);

@@ -1,6 +1,5 @@
-﻿using System.Windows;
-using System.Windows.Threading;
 using Dwnloader.Core;
+using Microsoft.UI.Xaml;
 using Microsoft.Web.WebView2.Core;
 
 namespace Dwnloader.Auth;
@@ -23,6 +22,7 @@ public partial class LoginWindow : Window
     private readonly LoginTarget _target;
     private readonly DispatcherTimer _poll;
     private readonly CancellationTokenSource _closing = new();
+    private readonly TaskCompletionSource<LoginCheck?> _tcs = new();
 
     private bool _busy;
     private bool _finished;
@@ -38,15 +38,17 @@ public partial class LoginWindow : Window
         InitializeComponent();
         _target = target;
 
+        var appWindow = WindowInterop.GetAppWindow(this);
+        appWindow.Resize(new Windows.Graphics.SizeInt32(900, 760));
+
         Title = $"{target.Label} にログイン";
         TitleText.Text = $"{target.Label} にログイン";
         HintText.Text = target.Hint;
         StatusText.Text = "読み込んでいます…";
 
         _poll = new DispatcherTimer { Interval = PollInterval };
-        _poll.Tick += async (_, _) => await CheckAsync(auto: true).ConfigureAwait(true);
+        _poll.Tick += async (_, _) => await CheckAsync(auto: true);
 
-        Loaded += OnLoaded;
         Closed += (_, _) =>
         {
             _poll.Stop();
@@ -54,7 +56,13 @@ public partial class LoginWindow : Window
             // 最中に捨てると、そちらが例外で転ぶ（閉じただけなのに
             // 「確認できませんでした」が出る）。
             try { _closing.Cancel(); } catch (ObjectDisposedException) { }
+
+            var result = Succeeded ? new LoginCheck(true, ResultMessage)
+                : ResultMessage.Length > 0 ? new LoginCheck(false, ResultMessage) : null;
+            _tcs.TrySetResult(result);
         };
+
+        _ = InitializeAsync();
     }
 
     /// <summary>
@@ -63,29 +71,26 @@ public partial class LoginWindow : Window
     /// 戻り値が null なら「ユーザーが自分で閉じた」。WebView2 が使えない環境では
     /// 例外にせず Ok=false を返すので、呼び出し側は手入力へ案内できる。
     /// </summary>
-    public static LoginCheck? Show(Window? owner, LoginTarget target)
+    public static Task<LoginCheck?> ShowAsync(LoginTarget target)
     {
         var window = new LoginWindow(target);
-        if (owner is not null && !ReferenceEquals(owner, window)) window.Owner = owner;
-
-        window.ShowDialog();
-
-        if (window.Succeeded) return new LoginCheck(true, window.ResultMessage);
-        return window.ResultMessage.Length > 0
-            ? new LoginCheck(false, window.ResultMessage)
-            : null;
+        window.Activate();
+        return window._tcs.Task;
     }
 
     // ------------------------------------------------------------ 起動
 
-    private async void OnLoaded(object sender, RoutedEventArgs e)
+    private async Task InitializeAsync()
     {
         try
         {
             Directory.CreateDirectory(AppPaths.WebViewDir);
+            // WinUI3向けはC#/WinRTプロジェクション経由になり、3引数版は
+            // CreateAsync ではなく CreateWithOptionsAsync という別名になる
+            // （メタデータリーダーで実DLLを直接確認して判明）。
             var env = await CoreWebView2Environment
-                .CreateAsync(null, AppPaths.WebViewDir).ConfigureAwait(true);
-            await Browser.EnsureCoreWebView2Async(env).ConfigureAwait(true);
+                .CreateWithOptionsAsync(null, AppPaths.WebViewDir, null);
+            await Browser.EnsureCoreWebView2Async(env);
         }
         catch (Exception ex)
         {
@@ -174,7 +179,7 @@ public partial class LoginWindow : Window
             List<CoreWebView2Cookie> list;
             try
             {
-                var got = await core.CookieManager.GetCookiesAsync(url).ConfigureAwait(true);
+                var got = await core.CookieManager.GetCookiesAsync(url);
                 list = got.ToList();
             }
             catch (Exception e) when (e is InvalidOperationException
@@ -202,20 +207,17 @@ public partial class LoginWindow : Window
     }
 
     /// <summary>
-    /// WebView2 の期限を Unix 秒に直す。セッションCookie は
-    /// <see cref="DateTime.MinValue"/> で返るので 0 に落とす。
+    /// WebView2 の期限を Unix 秒に直す。WinUI3 向けの CoreWebView2Cookie.Expires は
+    /// WPF版と違い、素の Unix 秒（double、-1 はセッションCookie）で返ってくる。
     /// </summary>
-    private static long ToUnix(DateTime expires)
+    private static long ToUnix(double expires)
     {
-        if (expires <= DateTime.UnixEpoch) return 0;
+        if (expires <= 0) return 0;
         try
         {
-            var utc = expires.Kind == DateTimeKind.Unspecified
-                ? DateTime.SpecifyKind(expires, DateTimeKind.Utc)
-                : expires.ToUniversalTime();
-            return new DateTimeOffset(utc).ToUnixTimeSeconds();
+            return checked((long)expires);
         }
-        catch (ArgumentOutOfRangeException)
+        catch (OverflowException)
         {
             return 0;                   // 極端な値。セッション扱いで困らない。
         }

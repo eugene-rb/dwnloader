@@ -2,11 +2,24 @@ __pycache__/
 *.pyc
 *.pyo
 
+# ビルド成果物・配布物
+[Bb]in/
+[Oo]bj/
+publish-win-x64/
+publish-v*/
+Releases/
+Releases-*/
+*.zip
+
+# 実行ログ
+*.log
+
 # Claude Code のローカルツール類（このプロジェクトの一部ではない）
 .agents/
 .claude/
 skills-lock.json
 generated-images/
+graphify-out/
 
 # OS
 Thumbs.db

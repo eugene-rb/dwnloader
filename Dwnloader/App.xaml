@@ -1,7 +1,20 @@
-<Application x:Class="Dwnloader.App"
-             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             ShutdownMode="OnExplicitShutdown">
+<Application
+    x:Class="Dwnloader.App"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!--
+                    Pivot/NumberBox/Expander等の複合コントロールは内部で
+                    TabViewButtonBackground等の標準テーマリソースに依存する。
+                    これが無いと XamlParseException: "Cannot find a Resource
+                    with the Name/Key ..." で実行時に落ちる（プロジェクト
+                    テンプレートでは既定で入るが、このプロジェクトは手組みの
+                    ため明示的に必要）。
+                -->
+                <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
     </Application.Resources>
 </Application>

@@ -21,7 +21,11 @@ public static class AppInfo
 
     private static string ReadVersion()
     {
-        var assembly = Assembly.GetExecutingAssembly();
+        // AppInfo は UI 非依存の Dwnloader.Core に置いているが、版番号を持つのは
+        // 実行ファイル側（Dwnloader.csproj の <Version>）。GetExecutingAssembly だと
+        // Dwnloader.Core.dll（版指定なし＝1.0.0）を拾ってしまうため、入口の
+        // アセンブリを見る。CLI 経由（--selftest 等）でも入口は Dwnloader.exe。
+        var assembly = Assembly.GetEntryAssembly() ?? Assembly.GetExecutingAssembly();
 
         // InformationalVersion には "2.1.0+<コミットハッシュ>" が入ることがある
         var info = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()

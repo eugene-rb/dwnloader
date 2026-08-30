@@ -2,8 +2,9 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
 using System.Threading.Tasks.Dataflow;
-using System.Windows.Media.Imaging;
-using System.Windows.Threading;
+using Microsoft.UI.Dispatching;
+using Microsoft.UI.Xaml.Media.Imaging;
+using Windows.Storage.Streams;
 using Dwnloader.Core;
 using Dwnloader.Jobs;
 using Dwnloader.Sites;
@@ -16,7 +17,7 @@ public sealed class Session : IDisposable
     /// <summary>UI へ流す更新をまとめる間隔。人の目には十分速く、描画の回数は大きく減る。</summary>
     private static readonly TimeSpan PumpInterval = TimeSpan.FromMilliseconds(100);
 
-    private readonly Dispatcher _ui;
+    private readonly DispatcherQueue _ui;
     private readonly AppSettings _settings;
     private readonly History _history;
     private readonly QueueStore _queueStore;
@@ -31,7 +32,7 @@ public sealed class Session : IDisposable
 
     // ---- UI へ流す更新の緩衝 ----
     private readonly ConcurrentDictionary<string, PendingProgress> _pendingProgress = new();
-    private readonly DispatcherTimer _pump;
+    private readonly DispatcherQueueTimer _pump;
     private volatile bool _stateDirty;
 
     /// <summary>ダウンロード速度の計測。全ジョブの実バイト数をここへ積む。</summary>
@@ -73,7 +74,7 @@ public sealed class Session : IDisposable
         public string Detail = "";
     }
 
-    public Session(Dispatcher ui, AppSettings settings, History history, QueueStore queueStore)
+    public Session(DispatcherQueue ui, AppSettings settings, History history, QueueStore queueStore)
     {
         _ui = ui;
         _settings = settings;
@@ -101,10 +102,8 @@ public sealed class Session : IDisposable
 
         Clipboard = new ClipboardWatcher(OnClipboardText);
 
-        _pump = new DispatcherTimer(DispatcherPriority.Background, _ui)
-        {
-            Interval = PumpInterval,
-        };
+        _pump = _ui.CreateTimer();
+        _pump.Interval = PumpInterval;
         _pump.Tick += (_, _) => FlushPending();
         _pump.Start();
     }
@@ -356,9 +355,8 @@ public sealed class Session : IDisposable
         }
         catch (Exception e)
         {
-            await _ui.InvokeAsync(() =>
-                Log("error", $"URLの解析に失敗しました: {e.GetType().Name}: {e.Message}"),
-                DispatcherPriority.Background);
+            await PostAsync(() =>
+                Log("error", $"URLの解析に失敗しました: {e.GetType().Name}: {e.Message}"));
             return;
         }
 
@@ -367,13 +365,13 @@ public sealed class Session : IDisposable
         if (refs.Count == 0)
         {
             if (request.NotifyWhenEmpty)
-                await _ui.InvokeAsync(NotifyCannotAdd, DispatcherPriority.Background);
+                await PostAsync(NotifyCannotAdd);
             return;
         }
 
         // 追加そのものは UI スレッドで一括で行う。1件ずつ流すと件数分の
         // レイアウトが走り、まさに「固まる」状態になる。
-        await _ui.InvokeAsync(() => AddRefs(refs, request.Source), DispatcherPriority.Background);
+        await PostAsync(() => AddRefs(refs, request.Source));
     }
 
     /// <summary>
@@ -898,10 +896,11 @@ public sealed class Session : IDisposable
             {
                 Done = done, Total = total, Detail = detail,
             },
-        Thumbnail = (jobId, data) => Post(() =>
+        Thumbnail = (jobId, data) => Post(async () =>
         {
+            var thumb = await DecodeThumbAsync(data);
             if (!_byId.TryGetValue(jobId, out var e)) return;
-            e.Thumb = DecodeThumb(data);
+            e.Thumb = thumb;
         }),
         Finished = (jobId, result) => Post(() => OnFinished(jobId, result)),
     };
@@ -913,20 +912,48 @@ public sealed class Session : IDisposable
     private void Post(Action action)
     {
         if (_disposed) return;
-        try { _ui.InvokeAsync(action, DispatcherPriority.Background); }
-        catch (TaskCanceledException) { }
+        _ui.TryEnqueue(DispatcherQueuePriority.Low, () => action());
     }
 
-    private static BitmapSource? DecodeThumb(byte[] data)
+    /// <summary>
+    /// UI スレッドでの実行完了を待つ版。ActionBlock は1本の流れで直列に処理される
+    /// ので、UI側への反映（AddRefs 等）が終わってから次のリクエストに移るためにこちらを使う。
+    /// </summary>
+    private Task PostAsync(Action action)
+    {
+        var tcs = new TaskCompletionSource();
+        if (_disposed || !_ui.TryEnqueue(DispatcherQueuePriority.Low, () =>
+            {
+                try { action(); tcs.SetResult(); }
+                catch (Exception ex) { tcs.SetException(ex); }
+            }))
+        {
+            tcs.SetResult();
+        }
+        return tcs.Task;
+    }
+
+    /// <summary>
+    /// サムネイルを非同期にデコードする。WinUI3 の BitmapImage は WPF と違い
+    /// BeginInit/EndInit/Freeze の同期パターンを持たず、UI スレッド上での
+    /// 非同期 SetSourceAsync が必須（Freeze 相当の別スレッド共有もできない）。
+    /// </summary>
+    private static async Task<BitmapSource?> DecodeThumbAsync(byte[] data)
     {
         try
         {
+            using var stream = new InMemoryRandomAccessStream();
+            using (var writer = new DataWriter(stream.GetOutputStreamAt(0)))
+            {
+                writer.WriteBytes(data);
+                await writer.StoreAsync();
+                await writer.FlushAsync();
+                writer.DetachStream();
+            }
+            stream.Seek(0);
+
             var image = new BitmapImage();
-            image.BeginInit();
-            image.CacheOption = BitmapCacheOption.OnLoad;
-            image.StreamSource = new MemoryStream(data);
-            image.EndInit();
-            image.Freeze();                 // 別スレッドから触れるようにする
+            await image.SetSourceAsync(stream);
             return image;
         }
         catch (Exception)

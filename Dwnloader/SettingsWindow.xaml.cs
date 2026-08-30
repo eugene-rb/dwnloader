@@ -1,9 +1,11 @@
-﻿using System.Globalization;
-using System.Windows;
-using System.Windows.Controls;
+using System.Globalization;
 using Dwnloader.Auth;
 using Dwnloader.Core;
 using Dwnloader.Jobs;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Windows.Storage.Pickers;
+using WinRT.Interop;
 
 namespace Dwnloader;
 
@@ -11,13 +13,20 @@ public partial class SettingsWindow : Window
 {
     private readonly SettingsData _original;
     private readonly UpdateService? _updates;
+    private readonly TaskCompletionSource<SettingsData?> _tcs = new();
 
     /// <summary>保存が押されたときだけ入る。押されなければ null のまま。</summary>
     public SettingsData? Result { get; private set; }
 
-    public SettingsWindow(SettingsData current, UpdateService? updates = null)
+    private SettingsWindow(SettingsData current, UpdateService? updates)
     {
         InitializeComponent();
+
+        var appWindow = WindowInterop.GetAppWindow(this);
+        appWindow.Resize(new Windows.Graphics.SizeInt32(700, 600));
+
+        Title = "設定";
+
         _original = current.Clone();
         _updates = updates;
         Load(_original);
@@ -27,12 +36,39 @@ public partial class SettingsWindow : Window
             : UpdateService.UnsupportedReason;
 
         RefreshAccounts();
+
+        Closed += (_, _) => _tcs.TrySetResult(Result);
+    }
+
+    /// <summary>
+    /// 設定ダイアログを開き、閉じられるまで待つ。保存されれば新しい設定、
+    /// キャンセルされれば null を返す。
+    /// </summary>
+    public static Task<SettingsData?> ShowAsync(SettingsData current, UpdateService? updates = null)
+    {
+        var window = new SettingsWindow(current, updates);
+        window.Activate();
+        return window._tcs.Task;
+    }
+
+    // ------------------------------------------------------------ ダイアログ
+
+    private async Task ShowMessageAsync(string title, string message)
+    {
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Content.XamlRoot,
+            Title = title,
+            Content = message,
+            CloseButtonText = "OK",
+        };
+        await dialog.ShowAsync();
     }
 
     // ------------------------------------------------------------ アカウント
 
-    private void PixivLogin_Click(object sender, RoutedEventArgs e) => Login(CookieStore.Pixiv);
-    private void TwitterLogin_Click(object sender, RoutedEventArgs e) => Login(CookieStore.Twitter);
+    private async void PixivLogin_Click(object sender, RoutedEventArgs e) => await Login(CookieStore.Pixiv);
+    private async void TwitterLogin_Click(object sender, RoutedEventArgs e) => await Login(CookieStore.Twitter);
 
     private void PixivLogout_Click(object sender, RoutedEventArgs e) => Logout(CookieStore.Pixiv);
     private void TwitterLogout_Click(object sender, RoutedEventArgs e) => Logout(CookieStore.Twitter);
@@ -43,23 +79,21 @@ public partial class SettingsWindow : Window
     /// ログイン結果は保存ボタンとは無関係にその場で保存する。ログインし直した後に
     /// 「キャンセル」を押してログインまで消えてしまうと、何をしたのか分からなくなる。
     /// </summary>
-    private void Login(string site)
+    private async Task Login(string site)
     {
-        var result = LoginWindow.Show(this, LoginTarget.For(site));
+        var result = await LoginWindow.ShowAsync(LoginTarget.For(site));
         RefreshAccounts();
 
         if (result is null) return;             // 自分で閉じた
         if (result.Ok)
         {
-            MessageBox.Show(this, result.Message, "ログイン",
-                            MessageBoxButton.OK, MessageBoxImage.Information);
+            await ShowMessageAsync("ログイン", result.Message);
             return;
         }
 
-        MessageBox.Show(this,
-                        result.Message + Environment.NewLine + Environment.NewLine +
-                        "「詳細設定」から Cookie を手で指定することもできます。",
-                        "ログイン", MessageBoxButton.OK, MessageBoxImage.Warning);
+        await ShowMessageAsync("ログイン",
+            result.Message + Environment.NewLine + Environment.NewLine +
+            "「詳細設定」から Cookie を手で指定することもできます。");
     }
 
     private void Logout(string site)
@@ -130,27 +164,27 @@ public partial class SettingsWindow : Window
         ScanDirs.Text = string.Join(Environment.NewLine,
                                     LibraryIndex.ParseFolderList(s.ScanDirs));
         FilenameTemplate.Text = s.FilenameTemplate;
-        FilenameMaxLen.Text = s.FilenameMaxLen.ToString(CultureInfo.InvariantCulture);
+        FilenameMaxLen.Value = s.FilenameMaxLen;
 
         WatchClipboard.IsChecked = s.WatchClipboard;
         AutoStart.IsChecked = s.AutoStart;
         SkipDownloaded.IsChecked = s.SkipDownloaded;
-        GalleryWorkers.Text = s.GalleryWorkers.ToString(CultureInfo.InvariantCulture);
-        ImageWorkers.Text = s.ImageWorkers.ToString(CultureInfo.InvariantCulture);
-        VideoWorkers.Text = s.VideoWorkers.ToString(CultureInfo.InvariantCulture);
-        Retries.Text = s.Retries.ToString(CultureInfo.InvariantCulture);
-        Timeout.Text = s.Timeout.ToString("F0", CultureInfo.InvariantCulture);
+        GalleryWorkers.Value = s.GalleryWorkers;
+        ImageWorkers.Value = s.ImageWorkers;
+        VideoWorkers.Value = s.VideoWorkers;
+        Retries.Value = s.Retries;
+        Timeout.Value = s.Timeout;
         ClipboardBlacklist.Text = s.ClipboardBlacklist;
         ClipboardWhitelist.Text = s.ClipboardWhitelist;
 
         SelectByText(PreferFormat, s.PreferFormat);
-        JpegQuality.Text = s.JpegQuality.ToString(CultureInfo.InvariantCulture);
+        JpegQuality.Value = s.JpegQuality;
         KeepImages.IsChecked = s.KeepImages;
         PixivCookie.Text = s.PixivCookie;
 
         SelectByText(VideoQuality, s.VideoQuality);
         SelectByText(AudioFormat, s.AudioFormat);
-        AudioBitrate.Text = s.AudioBitrate.ToString(CultureInfo.InvariantCulture);
+        AudioBitrate.Value = s.AudioBitrate;
         PlaylistAll.IsChecked = s.PlaylistAll;
         MediaCookiesFile.Text = s.MediaCookiesFile;
         YtDlpPath.Text = s.YtDlpPath;
@@ -177,27 +211,27 @@ public partial class SettingsWindow : Window
         s.ScanDirs = string.Join(Environment.NewLine,
                                  LibraryIndex.ParseFolderList(ScanDirs.Text));
         s.FilenameTemplate = FilenameTemplate.Text;
-        s.FilenameMaxLen = ParseInt(FilenameMaxLen.Text, s.FilenameMaxLen);
+        s.FilenameMaxLen = NumberOr(FilenameMaxLen, s.FilenameMaxLen);
 
         s.WatchClipboard = WatchClipboard.IsChecked == true;
         s.AutoStart = AutoStart.IsChecked == true;
         s.SkipDownloaded = SkipDownloaded.IsChecked == true;
-        s.GalleryWorkers = ParseInt(GalleryWorkers.Text, s.GalleryWorkers);
-        s.ImageWorkers = ParseInt(ImageWorkers.Text, s.ImageWorkers);
-        s.VideoWorkers = ParseInt(VideoWorkers.Text, s.VideoWorkers);
-        s.Retries = ParseInt(Retries.Text, s.Retries);
-        s.Timeout = ParseInt(Timeout.Text, (int)s.Timeout);
+        s.GalleryWorkers = NumberOr(GalleryWorkers, s.GalleryWorkers);
+        s.ImageWorkers = NumberOr(ImageWorkers, s.ImageWorkers);
+        s.VideoWorkers = NumberOr(VideoWorkers, s.VideoWorkers);
+        s.Retries = NumberOr(Retries, s.Retries);
+        s.Timeout = NumberOr(Timeout, (int)s.Timeout);
         s.ClipboardBlacklist = ClipboardBlacklist.Text;
         s.ClipboardWhitelist = ClipboardWhitelist.Text;
 
         s.PreferFormat = SelectedText(PreferFormat, s.PreferFormat);
-        s.JpegQuality = ParseInt(JpegQuality.Text, s.JpegQuality);
+        s.JpegQuality = NumberOr(JpegQuality, s.JpegQuality);
         s.KeepImages = KeepImages.IsChecked == true;
         s.PixivCookie = PixivCookie.Text.Trim();
 
         s.VideoQuality = SelectedText(VideoQuality, s.VideoQuality);
         s.AudioFormat = SelectedText(AudioFormat, s.AudioFormat);
-        s.AudioBitrate = ParseInt(AudioBitrate.Text, s.AudioBitrate);
+        s.AudioBitrate = NumberOr(AudioBitrate, s.AudioBitrate);
         s.PlaylistAll = PlaylistAll.IsChecked == true;
         s.MediaCookiesFile = MediaCookiesFile.Text.Trim();
         s.YtDlpPath = YtDlpPath.Text.Trim();
@@ -207,74 +241,68 @@ public partial class SettingsWindow : Window
         s.AlwaysOnTop = AlwaysOnTop.IsChecked == true;
 
         Result = s;
-        DialogResult = true;
+        Close();
     }
 
-    private void Cancel_Click(object sender, RoutedEventArgs e) => DialogResult = false;
+    private void Cancel_Click(object sender, RoutedEventArgs e) => Close();
 
     // ------------------------------------------------------------ 参照ボタン
 
-    private void PickOutput_Click(object sender, RoutedEventArgs e)
-        => PickFolder(OutputDir);
-    private void PickVideo_Click(object sender, RoutedEventArgs e)
-        => PickFolder(VideoDir);
-    private void PickAudio_Click(object sender, RoutedEventArgs e)
-        => PickFolder(AudioDir);
+    private async void PickOutput_Click(object sender, RoutedEventArgs e) => await PickFolderAsync(OutputDir);
+    private async void PickVideo_Click(object sender, RoutedEventArgs e) => await PickFolderAsync(VideoDir);
+    private async void PickAudio_Click(object sender, RoutedEventArgs e) => await PickFolderAsync(AudioDir);
 
-    private static void PickFolder(TextBox target)
+    private async Task PickFolderAsync(TextBox target)
     {
-        var dialog = new System.Windows.Forms.FolderBrowserDialog
-        {
-            SelectedPath = target.Text,
-            UseDescriptionForTitle = true,
-            Description = "保存先を選んでください",
-        };
-        if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
-            target.Text = dialog.SelectedPath;
+        var picker = new FolderPicker();
+        picker.FileTypeFilter.Add("*");
+        InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(this));
+
+        var folder = await picker.PickSingleFolderAsync();
+        if (folder is not null) target.Text = folder.Path;
     }
 
     /// <summary>フォルダを選んで一覧の末尾に足す。手で打つより間違えにくい。</summary>
-    private void AddScanDir_Click(object sender, RoutedEventArgs e)
+    private async void AddScanDir_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new System.Windows.Forms.FolderBrowserDialog
-        {
-            UseDescriptionForTitle = true,
-            Description = "重複の確認に使うフォルダを選んでください",
-        };
-        if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
+        var picker = new FolderPicker();
+        picker.FileTypeFilter.Add("*");
+        InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(this));
+
+        var folder = await picker.PickSingleFolderAsync();
+        if (folder is null) return;
 
         var current = LibraryIndex.ParseFolderList(ScanDirs.Text);
-        if (!current.Contains(dialog.SelectedPath, StringComparer.OrdinalIgnoreCase))
-            current.Add(dialog.SelectedPath);
+        if (!current.Contains(folder.Path, StringComparer.OrdinalIgnoreCase))
+            current.Add(folder.Path);
         ScanDirs.Text = string.Join(Environment.NewLine, current);
     }
 
-    private void PickCookies_Click(object sender, RoutedEventArgs e)
-        => PickFile(MediaCookiesFile, "テキストファイル (*.txt)|*.txt|すべてのファイル (*.*)|*.*");
+    private async void PickCookies_Click(object sender, RoutedEventArgs e)
+        => await PickFileAsync(MediaCookiesFile, ".txt");
 
-    private void PickYtDlp_Click(object sender, RoutedEventArgs e)
-        => PickFile(YtDlpPath, "実行ファイル (*.exe)|*.exe|すべてのファイル (*.*)|*.*");
+    private async void PickYtDlp_Click(object sender, RoutedEventArgs e)
+        => await PickFileAsync(YtDlpPath, ".exe");
 
-    private static void PickFile(TextBox target, string filter)
+    private async Task PickFileAsync(TextBox target, string extension)
     {
-        var dialog = new Microsoft.Win32.OpenFileDialog { Filter = filter };
-        if (target.Text.Length > 0)
-        {
-            try { dialog.InitialDirectory = System.IO.Path.GetDirectoryName(target.Text); }
-            catch (ArgumentException) { }
-        }
-        if (dialog.ShowDialog() == true) target.Text = dialog.FileName;
+        var picker = new FileOpenPicker();
+        picker.FileTypeFilter.Add(extension);
+        picker.FileTypeFilter.Add("*");
+        InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(this));
+
+        var file = await picker.PickSingleFileAsync();
+        if (file is not null) target.Text = file.Path;
     }
 
     // ------------------------------------------------------------ 小道具
 
-    private static int ParseInt(string text, int fallback) =>
-        int.TryParse(text.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var v)
-            ? v : fallback;
+    private static int NumberOr(NumberBox box, int fallback) =>
+        double.IsNaN(box.Value) ? fallback : (int)box.Value;
 
     private static void SelectByText(ComboBox box, string value)
     {
-        foreach (ComboBoxItem item in box.Items)
+        foreach (ComboBoxItem item in box.Items.Cast<ComboBoxItem>())
         {
             if ((item.Content as string) == value) { box.SelectedItem = item; return; }
         }

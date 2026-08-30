@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <RootNamespace>Dwnloader</RootNamespace>
+    <AssemblyName>Dwnloader.Core</AssemblyName>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <!-- UIフレームワーク非依存。WinUI3移行(WinUi3Proto検証済み)でも
+         WPF版のときと同じくそのまま参照するだけで使える。 -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- AVIF / WebP の復号に必要。hitomi は既定で AVIF を配るため必須。 -->
+    <PackageReference Include="Magick.NET-Q8-AnyCPU" Version="14.16.0" />
+    <!-- JPEG を再エンコードせず PDF へ埋め込む（/DCTDecode）。 -->
+    <PackageReference Include="PdfSharp" Version="6.2.1" />
+    <!-- 受け取った Cookie を DPAPI で暗号化して保存する。 -->
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+    <!-- UpdateService.cs が使う。UI非依存(WinUi3Protoプロトタイプで検証済み)。 -->
+    <PackageReference Include="Velopack" Version="1.2.0" />
+  </ItemGroup>
+
+</Project>

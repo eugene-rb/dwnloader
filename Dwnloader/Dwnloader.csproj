@@ -2,55 +2,67 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <!-- WinUI3 (Windows App SDK) 移行。旧WPF版は net8.0-windows + UseWPF/
+         UseWindowsForms だったが、標準タイトルバーを保ったままのMica適用と
+         トレイアイコン(H.NotifyIcon.WinUI)・クリップボード監視サブクラス化・
+         Velopack pack/install/update が使い捨てプロトタイプで検証済み
+         （scratchpad/winui3proto）。UseWindowsForms は使わない — WinUI3
+         プロジェクトに追加すると XAML コンパイラと既知の競合(MC6000系)がある
+         うえ、FolderPicker/FileOpenPicker と H.NotifyIcon.WinUI への移行で
+         構造的に不要になった。 -->
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <SupportedOSPlatformVersion>10.0.18362.0</SupportedOSPlatformVersion>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
-    <!-- WPF と WinForms を両方有効にすると、暗黙 using が両方の名前空間を
-         取り込み Application / TextBox / Brush などが曖昧になる。取り込む
-         名前空間は GlobalUsings.cs で明示的に決める。 -->
     <ImplicitUsings>disable</ImplicitUsings>
-    <UseWPF>true</UseWPF>
-    <!-- タスクトレイ常駐に System.Windows.Forms.NotifyIcon を使う。
-         WPF には同等品が無く、追加の依存を増やさずに済む。 -->
-    <UseWindowsForms>true</UseWindowsForms>
+    <UseWinUI>true</UseWinUI>
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <!-- アンパッケージ配布。MSIXパッケージ識別を持たない代わりに、Velopackで
+         これまで通り GitHub Releases からの自動更新を続ける。 -->
+    <WindowsPackageType>None</WindowsPackageType>
+    <!-- Windows App SDK ランタイムのインストールを利用者に求めない。 -->
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <SelfContained>true</SelfContained>
+    <Platforms>x64</Platforms>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
     <AssemblyName>Dwnloader</AssemblyName>
     <RootNamespace>Dwnloader</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <ApplicationIcon>app.ico</ApplicationIcon>
     <!-- 起動時のコンソール窓を出さない。selftest のときだけ自前で確保する。 -->
     <DisableWinExeOutputInference>true</DisableWinExeOutputInference>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <InvariantGlobalization>false</InvariantGlobalization>
-    <!-- WFAC010: WinForms アナライザは高DPI設定をコード側でやれと言うが、
-         このアプリの主UIは WPF なのでマニフェストで指定するのが正しい。
-         トレイアイコンのためだけに WinForms を有効にしている。 -->
-    <NoWarn>$(NoWarn);WFAC010</NoWarn>
     <!-- 表示するバージョンはここ1か所に置く。vpk pack へ渡す packVersion と
          同じ値にすること（更新後に題名だけ古いまま、を防ぐ）。 -->
-    <Version>2.4.1</Version>
+    <Version>2.5.0</Version>
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- ApplicationIcon は exe の Win32 リソースに焼くだけで実行時に読めない。
-         トレイアイコンも同じ絵を使うため、WPF リソースとしても埋め込む。 -->
-    <Resource Include="app.ico" />
+    <Manifest Include="$(ApplicationManifest)" />
   </ItemGroup>
 
   <ItemGroup>
-    <!-- AVIF / WebP の復号に必要。hitomi は既定で AVIF を配るため必須で、
-         .NET 標準の画像デコーダも ImageSharp も AVIF を読めない。 -->
-    <PackageReference Include="Magick.NET-Q8-AnyCPU" Version="14.16.0" />
-    <!-- JPEG を再エンコードせず PDF へ埋め込む（/DCTDecode）。Python 版の
-         img2pdf と同じ性質で、画質を落とさず速い。 -->
-    <PackageReference Include="PdfSharp" Version="6.2.1" />
-    <PackageReference Include="Velopack" Version="1.2.0" />
-    <!-- サイトのログイン画面をアプリ内に出して Cookie を受け取る。ユーザーに
-         DevTools を開かせたり cookies.txt を書き出させたりせずに済む。 -->
+    <!-- ApplicationIcon(Win32リソース)は実行時に読めないので、トレイアイコン用に
+         ファイルとしても出力にコピーする（App.GetResourceStream相当がWinUI3に無いため）。 -->
+    <Content Include="app.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Dwnloader.Core\Dwnloader.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.7.250909003" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.4948" />
+    <!-- WinUI3に標準のトレイアイコンが無いための代替。2.4.1以降はnet10.0限定に
+         なりnet8.0-windowsでビルドできない（NU1202で確認済み）ため2.3.2に固定。 -->
+    <PackageReference Include="H.NotifyIcon.WinUI" Version="2.3.2" />
+    <!-- サイトのログイン画面をアプリ内に出して Cookie を受け取る。 -->
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
-    <!-- 受け取った Cookie は DPAPI で暗号化して保存する。auth_token は
-         アカウントそのものなので、平文で置かない。.NET 8 では標準ライブラリに
-         入っておらず、この小さな公式パッケージが必要。 -->
-    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+    <PackageReference Include="Velopack" Version="1.2.0" />
   </ItemGroup>
 
 </Project>

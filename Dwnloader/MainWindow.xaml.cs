@@ -1,8 +1,10 @@
 using System.ComponentModel;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Input;
 using Dwnloader.Core;
+using Microsoft.UI.Windowing;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
+using Windows.System;
 
 namespace Dwnloader;
 
@@ -19,6 +21,10 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         Title = AppInfo.WindowTitle;
+
+        var appWindow = WindowInterop.GetAppWindow(this);
+        appWindow.Resize(new Windows.Graphics.SizeInt32(1040, 760));
+        appWindow.Closing += OnAppWindowClosing;
     }
 
     public void Attach(Session session, TrayIcon tray, UpdateService? updates = null)
@@ -34,12 +40,6 @@ public partial class MainWindow : Window
         session.Notification += OnNotify;
         session.StateChanged += SyncState;
         session.FocusRequested += FocusEntry;
-    }
-
-    protected override void OnSourceInitialized(EventArgs e)
-    {
-        base.OnSourceInitialized(e);
-        if (_session is null) return;
 
         // クリップボードの変化はこのウィンドウのメッセージとして受け取る
         _session.Clipboard.Attach(this);
@@ -49,11 +49,40 @@ public partial class MainWindow : Window
         WatchToggle.IsChecked = _session.Clipboard.IsEnabled;
         PlaylistToggle.IsChecked = _session.Settings.PlaylistAll;
         SelectKind(_session.MediaKindValue);
-        Topmost = _session.Settings.AlwaysOnTop;
+        WindowInterop.SetAlwaysOnTop(this, _session.Settings.AlwaysOnTop);
         _suppressToggleEvents = false;
 
         SyncState();
         _ = CheckUpdatesQuietlyAsync();
+    }
+
+    // ============================================================== 確認ダイアログ
+
+    private async Task<bool> ConfirmAsync(string title, string message,
+        string yesText = "はい", string noText = "いいえ")
+    {
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Content.XamlRoot,
+            Title = title,
+            Content = message,
+            PrimaryButtonText = yesText,
+            CloseButtonText = noText,
+            DefaultButton = ContentDialogButton.Close,
+        };
+        return await dialog.ShowAsync() == ContentDialogResult.Primary;
+    }
+
+    private async Task ShowMessageAsync(string title, string message)
+    {
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Content.XamlRoot,
+            Title = title,
+            Content = message,
+            CloseButtonText = "OK",
+        };
+        await dialog.ShowAsync();
     }
 
     // ============================================================== 更新
@@ -75,7 +104,8 @@ public partial class MainWindow : Window
             if (found is null) return;
 
             UpdateBtn.Content = $"v{found} に更新";
-            UpdateBtn.ToolTip = $"新しい版 v{found} が公開されています（現在 v{AppInfo.Version}）";
+            ToolTipService.SetToolTip(UpdateBtn,
+                $"新しい版 v{found} が公開されています（現在 v{AppInfo.Version}）");
             UpdateBtn.Visibility = Visibility.Visible;
             _session?.Log("info", $"新しい版 v{found} が公開されています。"
                                   + "下の「更新」から適用できます。");
@@ -95,35 +125,31 @@ public partial class MainWindow : Window
         int running = _session.RunningCount();
         if (running > 0)
         {
-            MessageBox.Show(this,
+            await ShowMessageAsync("更新できません",
                 $"{running} 件が進行中です。終わるか中止してから更新してください。"
                 + Environment.NewLine
-                + "（更新はアプリを一度終了させるため、途中のダウンロードは失われます）",
-                "更新できません", MessageBoxButton.OK, MessageBoxImage.Warning);
+                + "（更新はアプリを一度終了させるため、途中のダウンロードは失われます）");
             return;
         }
 
         var version = _updates.AvailableVersion ?? "新しい版";
-        var answer = MessageBox.Show(this,
-            $"v{version} に更新します。ダウンロードのあとアプリを再起動します。",
-            "更新", MessageBoxButton.OKCancel, MessageBoxImage.Question);
-        if (answer != MessageBoxResult.OK) return;
+        bool proceed = await ConfirmAsync("更新",
+            $"v{version} に更新します。ダウンロードのあとアプリを再起動します。");
+        if (!proceed) return;
 
         _updateBusy = true;
         UpdateBtn.IsEnabled = false;
         try
         {
             UpdateBtn.Content = "取得中… 0%";
-            await _updates.DownloadAsync(percent => Dispatcher.InvokeAsync(
-                () => UpdateBtn.Content = $"取得中… {percent}%",
-                System.Windows.Threading.DispatcherPriority.Background));
+            await _updates.DownloadAsync(percent => DispatcherQueue.TryEnqueue(
+                () => UpdateBtn.Content = $"取得中… {percent}%"));
 
             // 落としている間に何か走り出していないか、直前にもう一度見る
             if (_session.RunningCount() > 0)
             {
-                MessageBox.Show(this,
-                    "取得中に新しいダウンロードが始まりました。終わってから「更新」を押し直してください。",
-                    "更新を中断しました", MessageBoxButton.OK, MessageBoxImage.Warning);
+                await ShowMessageAsync("更新を中断しました",
+                    "取得中に新しいダウンロードが始まりました。終わってから「更新」を押し直してください。");
                 UpdateBtn.Content = "更新";
                 return;
             }
@@ -135,8 +161,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, $"更新できませんでした: {ex.Message}",
-                            "更新", MessageBoxButton.OK, MessageBoxImage.Error);
+            await ShowMessageAsync("更新", $"更新できませんでした: {ex.Message}");
             UpdateBtn.Content = "更新";
         }
         finally
@@ -184,7 +209,7 @@ public partial class MainWindow : Window
     {
         // ウィンドウが見えていないときだけトレイから知らせる。
         // 両方に出すと過剰なので、見えているときは状態表示に任せる。
-        if (!IsVisible || WindowState == WindowState.Minimized)
+        if (WindowInterop.IsMinimized(this))
             _tray?.Notify(title, body);
         else
             StatusText.Text = body.Length > 0 ? $"{title} — {body}" : title;
@@ -200,16 +225,16 @@ public partial class MainWindow : Window
 
     private void Add_Click(object sender, RoutedEventArgs e) => SubmitInput();
 
-    private void UrlInput_KeyDown(object sender, KeyEventArgs e)
+    private void UrlInput_KeyDown(object sender, KeyRoutedEventArgs e)
     {
-        if (e.Key == Key.Enter) { SubmitInput(); e.Handled = true; }
+        if (e.Key == VirtualKey.Enter) { SubmitInput(); e.Handled = true; }
     }
 
     private void SubmitInput()
     {
         var text = UrlInput.Text.Trim();
         if (text.Length == 0) return;
-        UrlInput.Clear();
+        UrlInput.Text = "";
         _session?.AddText(text);
     }
 
@@ -255,23 +280,23 @@ public partial class MainWindow : Window
         _session?.SetEntryKind(entry.JobId, next);
     }
 
-    private void EntryList_DoubleClick(object sender, MouseButtonEventArgs e)
+    private void EntryList_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
         if (EntryList.SelectedItem is not EntryVm entry || _session is null) return;
         if (entry.CanOpen) _session.OpenResult(entry);
         else _session.OpenPage(entry);
     }
 
-    private void EntryList_KeyDown(object sender, KeyEventArgs e)
+    private void EntryList_KeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (_session is null) return;
 
-        if (e.Key == Key.Delete)
+        if (e.Key == VirtualKey.Delete)
         {
             _session.RemoveMany(EntryList.SelectedItems.Cast<EntryVm>().ToList());
             e.Handled = true;
         }
-        else if (e.Key == Key.Enter && EntryList.SelectedItem is EntryVm entry)
+        else if (e.Key == VirtualKey.Enter && EntryList.SelectedItem is EntryVm entry)
         {
             if (entry.CanOpen) _session.OpenResult(entry);
             else _session.OpenPage(entry);
@@ -285,17 +310,16 @@ public partial class MainWindow : Window
     private void RetryAll_Click(object sender, RoutedEventArgs e) => _session?.RetryAll();
     private void ClearFinished_Click(object sender, RoutedEventArgs e) => _session?.ClearFinished();
 
-    private void ClearAll_Click(object sender, RoutedEventArgs e)
+    private async void ClearAll_Click(object sender, RoutedEventArgs e)
     {
         if (_session is null || _session.Entries.Count == 0) return;
 
         int running = _session.RunningCount();
         if (running > 0)
         {
-            var answer = MessageBox.Show(this,
-                $"{running} 件が進行中です。中止して全部消しますか？",
-                "確認", MessageBoxButton.YesNo, MessageBoxImage.Question);
-            if (answer != MessageBoxResult.Yes) return;
+            bool proceed = await ConfirmAsync("確認",
+                $"{running} 件が進行中です。中止して全部消しますか？", "はい", "いいえ");
+            if (!proceed) return;
         }
         _session.ClearAll();
     }
@@ -346,14 +370,14 @@ public partial class MainWindow : Window
             LogList.ScrollIntoView(LogList.Items[^1]);
     }
 
-    private void Settings_Click(object sender, RoutedEventArgs e)
+    private async void Settings_Click(object sender, RoutedEventArgs e)
     {
         if (_session is null) return;
-        var dialog = new SettingsWindow(_session.Settings, _updates) { Owner = this };
-        if (dialog.ShowDialog() == true && dialog.Result is { } values)
+        var values = await SettingsWindow.ShowAsync(_session.Settings, _updates);
+        if (values is not null)
         {
             _session.SaveSettings(values);
-            Topmost = values.AlwaysOnTop;
+            WindowInterop.SetAlwaysOnTop(this, values.AlwaysOnTop);
             _suppressToggleEvents = true;
             WatchToggle.IsChecked = values.WatchClipboard;
             _suppressToggleEvents = false;
@@ -384,7 +408,7 @@ public partial class MainWindow : Window
 
     private void SelectKind(string kind)
     {
-        foreach (ComboBoxItem item in KindBox.Items)
+        foreach (ComboBoxItem item in KindBox.Items.Cast<ComboBoxItem>())
         {
             if ((item.Tag as string) == kind) { KindBox.SelectedItem = item; return; }
         }
@@ -395,8 +419,7 @@ public partial class MainWindow : Window
 
     public void ShowFromTray()
     {
-        Show();
-        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+        WindowInterop.ShowNormal(this);
         Activate();
     }
 
@@ -406,14 +429,14 @@ public partial class MainWindow : Window
         Close();
     }
 
-    protected override void OnClosing(CancelEventArgs e)
+    private async void OnAppWindowClosing(AppWindow sender, AppWindowClosingEventArgs args)
     {
-        if (_session is null) { base.OnClosing(e); return; }
+        if (_session is null) return;
 
         if (!_quitting && _session.Settings.MinimizeToTray)
         {
-            e.Cancel = true;
-            Hide();
+            args.Cancel = true;
+            WindowInterop.Hide(this);
             _tray?.Notify(AppInfo.Title, "タスクトレイで監視を続けます");
             return;
         }
@@ -423,13 +446,16 @@ public partial class MainWindow : Window
             int running = _session.RunningCount();
             if (running > 0)
             {
-                var answer = MessageBox.Show(this,
-                    $"{running} 件のダウンロードが進行中です。中止して終了しますか？",
-                    "確認", MessageBoxButton.YesNo, MessageBoxImage.Question);
-                if (answer != MessageBoxResult.Yes) { e.Cancel = true; return; }
+                args.Cancel = true;
+                bool proceed = await ConfirmAsync("確認",
+                    $"{running} 件のダウンロードが進行中です。中止して終了しますか？");
+                if (proceed)
+                {
+                    _quitting = true;
+                    Close();
+                }
+                return;
             }
         }
-
-        base.OnClosing(e);
     }
 }

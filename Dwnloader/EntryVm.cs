@@ -2,8 +2,9 @@ using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
 using Dwnloader.Core;
 
 namespace Dwnloader;
@@ -59,22 +60,65 @@ public sealed class EntryVm : INotifyPropertyChanged
             Raise(nameof(CanRetry));
             Raise(nameof(CanCancel));
             Raise(nameof(ShowProgress));
+            Raise(nameof(ShowMessage));
         }
     }
 
     public string StatusLabel => StatusText.Label(_status);
     public bool IsActive => StatusText.IsActive(_status);
 
-    /// <summary>状態を色で見分けられるようにする。文字だけだと一覧で追いにくい。</summary>
-    public Brush StatusBrush => _status switch
+    /// <summary>
+    /// 状態を色で見分けられるようにする。文字だけだと一覧で追いにくい。
+    ///
+    /// 固定色ではなく、Windows 標準の状態色（設定アプリ等が使っているのと同じ
+    /// テーマリソース）を引く。ライト/ダークどちらでも見た目が浮かない。
+    /// </summary>
+    public Brush? StatusBrush => _status switch
     {
-        JobStatus.Done => Brushes.MediumSeaGreen,
-        JobStatus.Skipped => Brushes.SteelBlue,
-        JobStatus.Partial => Brushes.Goldenrod,
-        JobStatus.Failed => Brushes.IndianRed,
-        JobStatus.Canceled => Brushes.Gray,
-        _ => Brushes.CornflowerBlue,
+        JobStatus.Done => ThemeBrush("SystemFillColorSuccessBrush"),
+        JobStatus.Skipped => ThemeBrush("TextFillColorSecondaryBrush"),
+        JobStatus.Partial => ThemeBrush("SystemFillColorCautionBrush"),
+        JobStatus.Failed => ThemeBrush("SystemFillColorCriticalBrush"),
+        JobStatus.Canceled => ThemeBrush("TextFillColorTertiaryBrush"),
+        _ => ThemeBrush("AccentTextFillColorPrimaryBrush"),
     };
+
+    /// <summary>
+    /// アプリのテーマ辞書からブラシを引く。<c>Application.Resources</c>の
+    /// 素朴なインデクサ参照は <c>ThemeDictionaries</c> 内を見てくれないため、
+    /// 現在の実効テーマ（<see cref="Application.RequestedTheme"/>）に応じて
+    /// Light/Dark いずれかの辞書を自分で辿る。
+    /// </summary>
+    private static Brush? ThemeBrush(string key)
+    {
+        var app = Application.Current;
+        if (app is null) return null;
+        var themeKey = app.RequestedTheme == ApplicationTheme.Dark ? "Dark" : "Light";
+
+        if (TryFind(app.Resources, themeKey, key, out var found)) return found;
+        return app.Resources.TryGetValue(key, out var plain) ? plain as Brush : null;
+    }
+
+    private static bool TryFind(ResourceDictionary dict, string themeKey, string key, out Brush? brush)
+    {
+        if (dict.ThemeDictionaries.TryGetValue(themeKey, out var themedObj)
+            && themedObj is ResourceDictionary themed)
+        {
+            if (themed.TryGetValue(key, out var value) && value is Brush b)
+            {
+                brush = b;
+                return true;
+            }
+        }
+
+        foreach (var merged in dict.MergedDictionaries)
+        {
+            if (TryFind(merged, themeKey, key, out brush)) return true;
+        }
+
+        brush = null;
+        return false;
+    }
 
     private string _title;
     public string Title
@@ -107,10 +151,17 @@ public sealed class EntryVm : INotifyPropertyChanged
             _message = value;
             Raise();
             Raise(nameof(HasMessage));
+            Raise(nameof(ShowMessage));
         }
     }
 
     public bool HasMessage => _message.Length > 0;
+
+    /// <summary>
+    /// メッセージ行を表示するか。WinUI3にはWPFのMultiDataTriggerに相当する
+    /// ものが無いため、進捗バーとの排他条件をここで計算プロパティにしてある。
+    /// </summary>
+    public bool ShowMessage => HasMessage && !ShowProgress;
 
     private string _outPath = "";
     public string OutPath

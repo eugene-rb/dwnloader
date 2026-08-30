@@ -1,18 +1,27 @@
 using System.Runtime.InteropServices;
-using System.Windows.Interop;
+using Microsoft.UI.Xaml;
+using Windows.ApplicationModel.DataTransfer;
+using WinRT.Interop;
 
 namespace Dwnloader;
 
 /// <summary>
 /// クリップボード監視。
 ///
-/// Python 版は 0.5 秒ごとに変化を問い合わせていたが、Windows は変化を
-/// ウィンドウメッセージで通知してくれる。ポーリングを一切やめられるので、
-/// 監視のためのスレッドも要らず、取りこぼしも減る。
+/// WPF版は HwndSource.AddHook で1行フックできたが、WinUI3の Window には
+/// 相当する仕組みが無い。ここではウィンドウプロシージャを自前でサブクラス化
+/// （SetWindowLongPtr で差し替え、元のプロシージャには CallWindowProc で
+/// 必ず委譲する）して WM_CLIPBOARDUPDATE を捕まえる。
+///
+/// Windows は変化をウィンドウメッセージで通知してくれるので、ポーリングは
+/// 一切不要（監視のためのスレッドも要らず、取りこぼしも減る）。
 /// </summary>
 public sealed class ClipboardWatcher : IDisposable
 {
     private const int WM_CLIPBOARDUPDATE = 0x031D;
+    private const int GWLP_WNDPROC = -4;
+
+    private delegate IntPtr WndProcDelegate(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -22,26 +31,43 @@ public sealed class ClipboardWatcher : IDisposable
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool RemoveClipboardFormatListener(IntPtr hwnd);
 
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
+    private static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, WndProcDelegate newProc);
+
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
+    private static extern IntPtr SetWindowLongPtrRaw(IntPtr hWnd, int nIndex, IntPtr newProc);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr CallWindowProc(
+        IntPtr prevProc, IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
     private readonly Action<string> _onText;
-    private HwndSource? _source;
+    // ネイティブ側に渡すデリゲートはGCされると即クラッシュするので、
+    // フィールドに保持して参照を生かし続ける。
+    private readonly WndProcDelegate _wndProcDelegate;
     private IntPtr _hwnd;
+    private IntPtr _originalWndProc;
     private bool _registered;
+    private bool _subclassed;
     private bool _enabled;
     private string _lastText = "";
 
-    public ClipboardWatcher(Action<string> onText) => _onText = onText;
+    public ClipboardWatcher(Action<string> onText)
+    {
+        _onText = onText;
+        _wndProcDelegate = WndProc;
+    }
 
     public bool IsEnabled => _enabled;
 
     /// <summary>ウィンドウが出来てから呼ぶ。メッセージの受け口をそこに間借りする。</summary>
-    public void Attach(System.Windows.Window window)
+    public void Attach(Window window)
     {
-        var helper = new WindowInteropHelper(window);
-        _hwnd = helper.Handle;
+        _hwnd = WindowNative.GetWindowHandle(window);
         if (_hwnd == IntPtr.Zero) return;
 
-        _source = HwndSource.FromHwnd(_hwnd);
-        _source?.AddHook(WndProc);
+        _originalWndProc = SetWindowLongPtr(_hwnd, GWLP_WNDPROC, _wndProcDelegate);
+        _subclassed = _originalWndProc != IntPtr.Zero;
 
         _registered = AddClipboardFormatListener(_hwnd);
     }
@@ -49,15 +75,26 @@ public sealed class ClipboardWatcher : IDisposable
     public void SetEnabled(bool enabled)
     {
         // 止めている間のコピーを再開時にまとめて拾わない
-        if (enabled && !_enabled) _lastText = ReadText() ?? "";
+        if (enabled && !_enabled) _ = RefreshLastTextAsync();
         _enabled = enabled;
     }
 
-    private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
-    {
-        if (msg != WM_CLIPBOARDUPDATE || !_enabled) return IntPtr.Zero;
+    private async Task RefreshLastTextAsync() => _lastText = await ReadTextAsync() ?? "";
 
-        var text = ReadText();
+    private IntPtr WndProc(IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam)
+    {
+        if (msg == WM_CLIPBOARDUPDATE && _enabled)
+        {
+            _ = OnClipboardUpdateAsync();
+        }
+        // 自分が処理しないメッセージは、必ず元のプロシージャに委譲する。
+        // これを忘れると WinUI3 内部のメッセージ処理が壊れる。
+        return CallWindowProc(_originalWndProc, hwnd, msg, wParam, lParam);
+    }
+
+    private async Task OnClipboardUpdateAsync()
+    {
+        var text = await ReadTextAsync();
         if (!string.IsNullOrEmpty(text) && text != _lastText)
         {
             _lastText = text;
@@ -70,26 +107,26 @@ public sealed class ClipboardWatcher : IDisposable
                 // 監視は止めない。1件の失敗で常駐が死ぬほうが困る。
             }
         }
-        return IntPtr.Zero;
     }
 
     /// <summary>
     /// クリップボードのテキストを読む。他のプロセスが開いている間は失敗するので、
     /// 少し待って何度か試す。
     /// </summary>
-    private static string? ReadText()
+    private static async Task<string?> ReadTextAsync()
     {
         for (int i = 0; i < 5; i++)
         {
             try
             {
-                if (System.Windows.Clipboard.ContainsText())
-                    return System.Windows.Clipboard.GetText();
+                var view = Clipboard.GetContent();
+                if (view.Contains(StandardDataFormats.Text))
+                    return await view.GetTextAsync();
                 return null;
             }
             catch (COMException)
             {
-                Thread.Sleep(30);
+                await Task.Delay(30);
             }
             catch (Exception)
             {
@@ -107,7 +144,10 @@ public sealed class ClipboardWatcher : IDisposable
             RemoveClipboardFormatListener(_hwnd);
             _registered = false;
         }
-        _source?.RemoveHook(WndProc);
-        _source = null;
+        if (_subclassed && _hwnd != IntPtr.Zero)
+        {
+            SetWindowLongPtrRaw(_hwnd, GWLP_WNDPROC, _originalWndProc);
+            _subclassed = false;
+        }
     }
 }

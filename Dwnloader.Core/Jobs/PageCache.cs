@@ -13,7 +13,7 @@ namespace Dwnloader.Jobs;
 /// %TEMP% ではなく %APPDATA% に置く。%TEMP% は起動時の TempSweeper が5分以上
 /// 前のものを消してしまい、日をまたいだ手動再試行に耐えられないため。
 /// </summary>
-internal static class PageCache
+public static class PageCache
 {
     private static readonly TimeSpan StaleAge = TimeSpan.FromDays(14);
 
