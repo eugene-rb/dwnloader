@@ -25,6 +25,17 @@ public partial class MainWindow : Window
         var appWindow = WindowInterop.GetAppWindow(this);
         appWindow.Resize(new Windows.Graphics.SizeInt32(1040, 760));
         appWindow.Closing += OnAppWindowClosing;
+
+        // タイトルバーのアイコン設定
+        try
+        {
+            var iconPath = System.IO.Path.Combine(AppContext.BaseDirectory, "app.ico");
+            if (System.IO.File.Exists(iconPath))
+            {
+                appWindow.SetIcon(iconPath);
+            }
+        }
+        catch { }
     }
 
     public void Attach(Session session, TrayIcon tray, UpdateService? updates = null)
