@@ -26,8 +26,8 @@
     <SelfContained>true</SelfContained>
     <Platforms>x64</Platforms>
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
-    <AssemblyName>Dwnloader</AssemblyName>
-    <RootNamespace>Dwnloader</RootNamespace>
+    <AssemblyName>Dwnldr</AssemblyName>
+    <RootNamespace>Dwnldr</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <!-- 起動時のコンソール窓を出さない。selftest のときだけ自前で確保する。 -->
     <DisableWinExeOutputInference>true</DisableWinExeOutputInference>
