@@ -1,6 +1,4 @@
-# Gallery → PDF Downloader
-
-作品ページのURLをコピーするだけで、全ページを1つのPDFにまとめて指定フォルダへ保存するデスクトップツールです。動画・音声のURLなら yt-dlp で取得します。
+# Downloader
 
 > **v2.0.0 から C# 版（[`Dwnloader/`](Dwnloader/)）が本体です。**
 >
