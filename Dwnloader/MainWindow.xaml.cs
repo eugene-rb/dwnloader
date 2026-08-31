@@ -36,6 +36,51 @@ public partial class MainWindow : Window
             }
         }
         catch { }
+
+        // ウィンドウ初期化後にタイトルバー色を設定
+        // ContentGrid のテーマ変更時に追従
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            UpdateTitleBarColor();
+            if (Content is FrameworkElement contentGrid)
+            {
+                contentGrid.ActualThemeChanged += (s, e) => UpdateTitleBarColor();
+            }
+        });
+    }
+
+    // ============================================================== テーマ設定
+
+    private void UpdateTitleBarColor()
+    {
+        try
+        {
+            var appWindow = WindowInterop.GetAppWindow(this);
+            var titleBar = appWindow.TitleBar;
+
+            // Content Grid のテーマから判定（Window 直下ではなく Grid から取得）
+            var isDark = (Content as FrameworkElement)?.ActualTheme == ElementTheme.Dark;
+
+            // ダークモード時とライトモード時で色を切り替え
+            // カード背景やシステムリソースに合わせて、統一感を持たせる
+            if (isDark)
+            {
+                // ダークモード：暗いグレー（Mica 背景に溶け込む）
+                titleBar.BackgroundColor = Windows.UI.Color.FromArgb(255, 32, 32, 32);
+                titleBar.ForegroundColor = Windows.UI.Color.FromArgb(255, 255, 255, 255);
+                titleBar.InactiveBackgroundColor = Windows.UI.Color.FromArgb(255, 32, 32, 32);
+                titleBar.InactiveForegroundColor = Windows.UI.Color.FromArgb(255, 128, 128, 128);
+            }
+            else
+            {
+                // ライトモード：明るいグレー
+                titleBar.BackgroundColor = Windows.UI.Color.FromArgb(255, 240, 240, 240);
+                titleBar.ForegroundColor = Windows.UI.Color.FromArgb(255, 0, 0, 0);
+                titleBar.InactiveBackgroundColor = Windows.UI.Color.FromArgb(255, 240, 240, 240);
+                titleBar.InactiveForegroundColor = Windows.UI.Color.FromArgb(255, 128, 128, 128);
+            }
+        }
+        catch { }
     }
 
     public void Attach(Session session, TrayIcon tray, UpdateService? updates = null)
