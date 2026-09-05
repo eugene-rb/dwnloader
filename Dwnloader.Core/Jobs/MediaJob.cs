@@ -197,6 +197,11 @@ public sealed partial class MediaJob : JobBase
         a.Add("--fragment-retries"); a.Add(retries.ToString(CultureInfo.InvariantCulture));
         a.Add("--socket-timeout");
         a.Add(Settings.Timeout.ToString("F0", CultureInfo.InvariantCulture));
+        if (!string.IsNullOrWhiteSpace(Settings.ProxyUrl))
+        {
+            a.Add("--proxy");
+            a.Add(Settings.ProxyUrl.Trim());
+        }
         a.Add("--windows-filenames");
         a.Add("--trim-filenames");
         a.Add(Math.Max(40, Settings.FilenameMaxLen).ToString(CultureInfo.InvariantCulture));

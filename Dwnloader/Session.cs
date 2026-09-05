@@ -21,7 +21,8 @@ public sealed class Session : IDisposable
     private readonly AppSettings _settings;
     private readonly History _history;
     private readonly QueueStore _queueStore;
-    private readonly HttpClient _client;
+    private HttpClient _client;
+    private readonly List<HttpClient> _clients = new();
     private readonly DownloadManager _manager;
 
     /// <summary>ref.Key -> Entry。重複判定を件数に関わらず一定時間で行うための索引。</summary>
@@ -82,7 +83,8 @@ public sealed class Session : IDisposable
         _queueStore = queueStore;
 
         var s = settings.Current;
-        _client = Net.CreateClient(pool: Math.Max(16, s.ImageWorkers * 4));
+        _client = CreateClientFor(s);
+        _clients.Add(_client);
         _manager = new DownloadManager(new Dictionary<string, int>
         {
             [DownloadManager.LaneGallery] = s.GalleryWorkers,
@@ -107,6 +109,9 @@ public sealed class Session : IDisposable
         _pump.Tick += (_, _) => FlushPending();
         _pump.Start();
     }
+
+    private static HttpClient CreateClientFor(SettingsData settings) =>
+        Net.CreateClient(pool: Math.Max(16, settings.ImageWorkers * 4), settings);
 
     // ============================================================== 起動処理
 
@@ -1188,9 +1193,16 @@ public sealed class Session : IDisposable
                               || before.VideoDir != values.VideoDir
                               || before.AudioDir != values.AudioDir
                               || before.ScanDirs != values.ScanDirs;
+        bool clientChanged = before.ProxyUrl != values.ProxyUrl
+                             || before.ImageWorkers != values.ImageWorkers;
 
         _settings.Replace(values);
         var s = Settings;
+        if (clientChanged)
+        {
+            _client = CreateClientFor(s);
+            _clients.Add(_client);
+        }
         if (foldersChanged) RescanLibrary();
         _manager.SetWorkers(DownloadManager.LaneGallery, s.GalleryWorkers);
         _manager.SetWorkers(DownloadManager.LaneMedia, s.VideoWorkers);
@@ -1303,7 +1315,8 @@ public sealed class Session : IDisposable
     {
         Shutdown();
         _manager.Dispose();
-        _client.Dispose();
+        foreach (var client in _clients)
+            client.Dispose();
         try { _shutdown.Dispose(); } catch (ObjectDisposedException) { }
     }
 }

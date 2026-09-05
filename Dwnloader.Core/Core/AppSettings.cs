@@ -50,6 +50,8 @@ public sealed class SettingsData
     [JsonPropertyName("image_workers")] public int ImageWorkers { get; set; } = 5;
     [JsonPropertyName("retries")] public int Retries { get; set; } = 3;
     [JsonPropertyName("timeout")] public double Timeout { get; set; } = 30;
+    /// <summary>Optional proxy URL for app HTTP and yt-dlp. Empty means system/default network.</summary>
+    [JsonPropertyName("proxy_url")] public string ProxyUrl { get; set; } = "";
 
     /// <summary>hitomi の画像形式優先: avif / webp。</summary>
     [JsonPropertyName("prefer_format")] public string PreferFormat { get; set; } = "avif";
@@ -163,6 +165,20 @@ public sealed class AppSettings : IDisposable
         s.PixivCookie ??= "";
         s.MediaCookiesFile ??= "";
         s.YtDlpPath ??= "";
+        s.ProxyUrl = NormalizeProxyUrl(s.ProxyUrl);
+    }
+
+    private static string NormalizeProxyUrl(string? value)
+    {
+        var proxy = (value ?? "").Trim();
+        if (proxy.Length == 0) return "";
+        if (!Uri.TryCreate(proxy, UriKind.Absolute, out var uri)) return "";
+
+        return uri.Scheme.ToLowerInvariant() switch
+        {
+            "http" or "https" or "socks4" or "socks4a" or "socks5" => proxy,
+            _ => "",
+        };
     }
 
     /// <summary>動画・音声の保存先。</summary>

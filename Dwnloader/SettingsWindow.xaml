@@ -210,6 +210,10 @@
                                 <NumberBox x:Name="Retries" Width="120" HorizontalAlignment="Left" SpinButtonPlacementMode="Inline"/>
                                 <TextBlock Text="タイムアウト（秒）" Style="{StaticResource FieldLabelStyle}"/>
                                 <NumberBox x:Name="Timeout" Width="120" HorizontalAlignment="Left" SpinButtonPlacementMode="Inline"/>
+                                <TextBlock Text="Proxy URL" Style="{StaticResource FieldLabelStyle}"/>
+                                <TextBox x:Name="ProxyUrl" PlaceholderText="http://127.0.0.1:8080"/>
+                                <TextBlock Text="Empty uses the default system network. Supports http, https, socks4, socks4a, socks5."
+                                           Style="{StaticResource CardHintStyle}"/>
                             </StackPanel>
                         </Border>
 

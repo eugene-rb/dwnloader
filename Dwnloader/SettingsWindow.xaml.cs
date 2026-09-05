@@ -174,6 +174,7 @@ public partial class SettingsWindow : Window
         VideoWorkers.Value = s.VideoWorkers;
         Retries.Value = s.Retries;
         Timeout.Value = s.Timeout;
+        ProxyUrl.Text = s.ProxyUrl;
         ClipboardBlacklist.Text = s.ClipboardBlacklist;
         ClipboardWhitelist.Text = s.ClipboardWhitelist;
 
@@ -221,6 +222,7 @@ public partial class SettingsWindow : Window
         s.VideoWorkers = NumberOr(VideoWorkers, s.VideoWorkers);
         s.Retries = NumberOr(Retries, s.Retries);
         s.Timeout = NumberOr(Timeout, (int)s.Timeout);
+        s.ProxyUrl = ProxyUrl.Text.Trim();
         s.ClipboardBlacklist = ClipboardBlacklist.Text;
         s.ClipboardWhitelist = ClipboardWhitelist.Text;
 

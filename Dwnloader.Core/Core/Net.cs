@@ -64,8 +64,9 @@ public static class Net
     /// アプリ全体で1つの HttpClient を使い回す。作り直すとソケットを使い潰す。
     /// 個別のヘッダ（Referer など）はリクエストごとに付けるので、ここには入れない。
     /// </summary>
-    public static HttpClient CreateClient(int pool = 16)
+    public static HttpClient CreateClient(int pool = 16, SettingsData? settings = null)
     {
+        var proxy = settings is null ? "" : (settings.ProxyUrl ?? "").Trim();
         var handler = new SocketsHttpHandler
         {
             MaxConnectionsPerServer = Math.Max(4, pool),
@@ -74,6 +75,12 @@ public static class Net
             AllowAutoRedirect = true,
             UseCookies = false,             // Cookie はヘッダで明示的に渡す
         };
+        if (proxy.Length > 0)
+        {
+            handler.Proxy = new WebProxy(proxy);
+            handler.UseProxy = true;
+        }
+
         var client = new HttpClient(handler, disposeHandler: true);
         client.DefaultRequestHeaders.UserAgent.ParseAdd(UserAgent);
         client.DefaultRequestHeaders.AcceptLanguage.ParseAdd("ja,en-US;q=0.8,en;q=0.6");
