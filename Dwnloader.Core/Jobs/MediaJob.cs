@@ -35,6 +35,25 @@ public sealed partial class MediaJob : JobBase
     private const string MetaTag = "@@M@@";
     private const string Sep = "";        // Unit Separator。本文に現れない。
 
+    // MP3 の ID3 タグ向け。yt-dlp が持つ正式な楽曲情報を先に使い、一般動画で
+    // 欠ける項目だけ投稿者やプレイリスト情報で補う。meta_* に入れた値は
+    // --embed-metadata がファイルへ書き込む値として優先される。
+    private static readonly string[] Mp3MetadataArguments =
+    {
+        "--parse-metadata",
+        "%(artist,artists,creator,creators,uploader,channel,uploader_id|)s:%(meta_artist)s",
+        "--parse-metadata",
+        "%(album_artist,album_artists,artist,artists,creator,creators,uploader,channel,uploader_id|)s:%(meta_album_artist)s",
+        "--parse-metadata",
+        "%(album,series,playlist_title,playlist|)s:%(meta_album)s",
+        "--parse-metadata",
+        "%(track_number,playlist_index|)s:%(meta_track)s",
+        "--embed-thumbnail",
+        // WebP/PNG のカバーを表示しないプレイヤーがあるため、ID3 の APIC は
+        // JPEG に統一する。元画像ファイルは埋め込み後に yt-dlp が片付ける。
+        "--convert-thumbnails", "jpg",
+    };
+
     private readonly bool _playlistAll;
     private bool _metaSent;
     private bool _processing;
@@ -267,6 +286,11 @@ public sealed partial class MediaJob : JobBase
             a.Add("--audio-format"); a.Add(Settings.AudioFormat);
             a.Add("--audio-quality");
             a.Add(Settings.AudioBitrate.ToString(CultureInfo.InvariantCulture) + "K");
+
+            if (string.Equals(Settings.AudioFormat, "mp3", StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (var argument in Mp3MetadataArguments) a.Add(argument);
+            }
         }
         else if (ffmpeg.Length > 0)
         {
@@ -284,7 +308,8 @@ public sealed partial class MediaJob : JobBase
 
         if (ffmpeg.Length > 0)
         {
-            // タイトルや投稿者をファイル自身に書き込む（PDF の文書情報と同じ考え）
+            // MP3 では上で補完した ID3 情報も含めて書き込む。yt-dlp の既定値で
+            // 曲名、日付、説明、元URL、ジャンル等も入る。
             a.Add("--embed-metadata");
         }
 
@@ -457,6 +482,9 @@ public sealed partial class MediaJob : JobBase
     private static bool IsPostProcessing(string line) =>
         line.Contains("[Merger]", StringComparison.Ordinal)
         || line.Contains("[ExtractAudio]", StringComparison.Ordinal)
+        || line.Contains("[Metadata]", StringComparison.Ordinal)
+        || line.Contains("[EmbedThumbnail]", StringComparison.Ordinal)
+        || line.Contains("[ThumbnailsConvertor]", StringComparison.Ordinal)
         || line.Contains("[VideoConvertor]", StringComparison.Ordinal)
         || line.Contains("[VideoRemuxer]", StringComparison.Ordinal);
 

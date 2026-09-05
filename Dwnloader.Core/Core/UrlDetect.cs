@@ -95,6 +95,9 @@ public static partial class UrlDetect
         new("odysee", Rx(@"^https?://odysee\.com/@[^/]+/(?<id>[^/?#]+)")),
         new("rumble", Rx(@"^https?://rumble\.com/(?<id>v[\w-]+)")),
         new("iwara", Rx(@"^https?://(?:www\.|ecchi\.)?iwara\.tv/videos?/(?<id>[\w-]+)")),
+        // 85PO は 85po.com / 85po.net を現行ミラーとして使い、旧URL には
+        // 85xo.com もある。同じ動画IDなら同一サイトとして重複排除する。
+        new("85po", Rx(@"^https?://(?:www\.)?(?:85po\.com|85po\.net|85xo\.com)/(?:[a-z]{2}/)?v/(?<id>\d+)(?:/|$)")),
         new("pornhub", Rx(@"^https?://(?:[\w-]+\.)?pornhub\.com/view_video\.php\?viewkey=(?<id>\w+)")),
         new("xvideos", Rx(@"^https?://(?:www\.)?xvideos\.com/(?<id>video[\w.]+)")),
         new("fc2", Rx(@"^https?://video\.fc2\.com/(?:[a-z]{2}/)?content/(?<id>\w+)")),

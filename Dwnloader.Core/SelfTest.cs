@@ -267,6 +267,25 @@ public static class SelfTest
         Check("ニコニコを判定", nico?.Site, "niconico");
         Check("ニコニコの動画ID", nico?.Gid, "sm9");
 
+        var po85 = UrlDetect.MatchKnownSite(
+            "https://www.85po.com/v/34803/ke-ai-mei-mei-xi-huan-tiao-wu/");
+        Check("85po.com を判定", po85?.Site, "85po");
+        Check("85po.com の動画ID", po85?.Gid, "34803");
+
+        var po85Ja = UrlDetect.MatchKnownSite(
+            "https://www.85po.com/ja/v/19778/na-na-ni--bao-guan-ku/");
+        Check("85po.com の言語付きURL", po85Ja?.Gid, "19778");
+        Check("85po.com の一覧ページは拾わない",
+              UrlDetect.MatchKnownSite("https://www.85po.com/ja/latest-updates/"), null);
+
+        var po85Net = UrlDetect.MatchKnownSite("https://www.85po.net/v/34803/example/");
+        Check("85po.net を同一サイトとして判定", po85Net?.Site, "85po");
+        Check("85po.net の動画ID", po85Net?.Gid, "34803");
+
+        var xo85 = UrlDetect.MatchKnownSite("https://85xo.com/en/v/19778/example/");
+        Check("85xo.com を旧URLとして判定", xo85?.Site, "85po");
+        Check("85xo.com の動画ID", xo85?.Gid, "19778");
+
         var direct = UrlDetect.MatchKnownSite("https://example.com/movie.mp4");
         Check("直リンクの動画を判定", direct?.Site, "file");
 
