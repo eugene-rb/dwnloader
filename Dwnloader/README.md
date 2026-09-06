@@ -88,10 +88,14 @@ dotnet run                   # 起動
 配布物（インストーラ・自動更新用のパッケージ）を作る:
 
 ```
-dotnet publish -c Release -r win-x64 --self-contained false -o ./publish-win-x64
+dotnet publish -c Release -r win-x64 -o ./publish-win-x64
 
-vpk pack --packId Dwnloader --packVersion <版> --packDir publish-win-x64   --mainExe Dwnloader.exe --packTitle "Gallery to PDF Downloader"   --packAuthors "eugene-rb" --icon app.ico --framework net8.0.0-x64-desktop   -o Releases
+vpk pack --packId Dwnldr --packVersion <版> --packDir publish-win-x64 --mainExe Dwnldr.exe --packTitle "Gallery to PDF Downloader" --packAuthors "eugene-rb" --icon app.ico --framework net8-x64-desktop --channel win -o Releases
 ```
+
+**`--packId` は必ず `Dwnldr`（= csproj の `<AssemblyName>`）、`--mainExe` は `Dwnldr.exe`。**
+過去に `Dwnloader` で pack して既存インストールの自動更新が通らなくなったことがある
+（導入済みアプリは `%LocalAppData%\Dwnldr\` で自分を `Dwnldr` として識別するため）。
 
 `vpk` は [Velopack](https://velopack.io) の CLI（`dotnet tool install -g vpk`）。
 `Releases/` にインストーラ・更新用パッケージ・目録が出るので、その中身を
