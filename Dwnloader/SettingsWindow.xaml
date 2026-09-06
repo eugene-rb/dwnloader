@@ -15,9 +15,19 @@
 
     <Grid Padding="20,16" Background="Transparent">
         <Grid.Resources>
-            <Style x:Key="CompactPivotHeaderStyle" TargetType="PivotHeaderItem">
-                <Setter Property="FontSize" Value="12"/>
-            </Style>
+            <!--
+                Pivot のタブ見出しを小さくする。ヘッダー項目の既定スタイル
+                (DefaultPivotHeaderItemStyle) は FontSize を
+                {ThemeResource PivotHeaderItemFontSize}（既定 24）から引くので、
+                その 1 リソースだけ差し替えればテンプレートに触れずに縮められる。
+
+                Pivot.ItemContainerStyle に TargetType="PivotHeaderItem" の
+                スタイルを渡してはいけない。コンテナは PivotItem なので
+                「Cannot apply a Style with TargetType 'PivotHeaderItem' to an
+                object of type 'PivotItem'」で構築時に COMException で落ちる
+                （commit 9d786f1 で混入し、設定画面が開けなくなっていた）。
+            -->
+            <x:Double x:Key="PivotHeaderItemFontSize">12</x:Double>
             <Style x:Key="CardBorderStyle" TargetType="Border">
                 <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}"/>
                 <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}"/>
@@ -48,7 +58,7 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <Pivot Grid.Row="0" ItemContainerStyle="{StaticResource CompactPivotHeaderStyle}">
+        <Pivot Grid.Row="0">
             <PivotItem Header="保存先">
                 <ScrollViewer Padding="4,12,4,4">
                     <StackPanel MaxWidth="640" HorizontalAlignment="Left">
