@@ -5,6 +5,7 @@ __pycache__/
 # ビルド成果物・配布物
 [Bb]in/
 [Oo]bj/
+publish/
 publish-win-x64/
 publish-v*/
 Releases/
