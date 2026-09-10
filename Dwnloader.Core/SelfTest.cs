@@ -40,6 +40,7 @@ public static class SelfTest
         TestDateParsing();
         TestGgParsing();
         TestMediaMatching();
+        TestMonsnodeResolver();
         TestSourceKeys();
         TestLibraryIndex();
         TestCookieStore();
@@ -286,6 +287,19 @@ public static class SelfTest
         Check("85xo.com を旧URLとして判定", xo85?.Site, "85po");
         Check("85xo.com の動画ID", xo85?.Gid, "19778");
 
+        var mons = UrlDetect.MatchKnownSite("https://monsnode.com/v1506575871309589251");
+        Check("monsnode を判定", mons?.Site, "monsnode");
+        Check("monsnode の動画ID（パスの数字）", mons?.Gid, "1506575871309589251");
+        Check("monsnode の www 付き・末尾スラッシュ",
+              UrlDetect.MatchKnownSite("https://www.monsnode.com/v2057718059733864612/")?.Gid,
+              "2057718059733864612");
+        Check("monsnode のランキングは拾わない",
+              UrlDetect.MatchKnownSite("https://monsnode.com/rank/r13p0"), null);
+        Check("monsnode のトップは拾わない",
+              UrlDetect.MatchKnownSite("https://monsnode.com/"), null);
+        Check("monsnode の /v は数字のみ（slug は拾わない）",
+              UrlDetect.MatchKnownSite("https://monsnode.com/video/foo"), null);
+
         var direct = UrlDetect.MatchKnownSite("https://example.com/movie.mp4");
         Check("直リンクの動画を判定", direct?.Site, "file");
 
@@ -297,6 +311,56 @@ public static class SelfTest
               UrlDetect.Hashed("https://a.example/x"), UrlDetect.Hashed("https://a.example/x"));
     }
 
+    /// <summary>
+    /// monsnode の実体URL解決。ページ解析（内部ID・base64動画URL）は純粋関数
+    /// なので、実際のHTMLの断片を固定文字列にして突き合わせる。ここが静かに
+    /// 壊れると、おすすめ欄の無関係な動画を落としたり全部失敗したりする。
+    /// </summary>
+    private static void TestMonsnodeResolver()
+    {
+        Section("monsnode の実体URL解決");
+
+        // 左カラムの内部IDを採る。ページ下部のおすすめ欄の redirect.php は無視。
+        const string page =
+            "<div class=\"left-column\">" +
+            "<a href=\"redirect.php?v=13768280\"><img src=\"x.jpg\" id=\"1506575871309589251\"></a>" +
+            "<a href=\"redirect.php?v=13768280&t=1\">View tweet</a></div>" +
+            "<div id=\"scroll\"><a href=\"https://monsnode.com/redirect.php?v=99999999\">other</a></div>";
+        Check("内部IDを左カラムから採る",
+              MonsnodeResolver.ExtractInternalId(page), "13768280");
+
+        // おすすめ欄が先に並んでいても左カラムを採る
+        const string sidebarFirst =
+            "<div id=\"scroll\"><a href=\"redirect.php?v=99999999\">other</a></div>" +
+            "<div class=\"left-column\"><a href=\"redirect.php?v=13768280\">x</a></div>";
+        Check("おすすめ欄が先でも左カラムを採る",
+              MonsnodeResolver.ExtractInternalId(sidebarFirst), "13768280");
+
+        Check("動画リンクが無ければ null",
+              MonsnodeResolver.ExtractInternalId("<html>なし</html>"), null);
+
+        // twjn.php の atob 2つ（動画URL・ツイートURL）から video.twimg.com を選ぶ
+        const string twjn =
+            "<script>(function(){var u=atob('" +
+            "aHR0cHM6Ly92aWRlby50d2ltZy5jb20vZXh0X3R3X3ZpZGVvLzEvcHUvdmlkLzEyODB4NzIwL3gubXA0P3RhZz0xMg==" +
+            "');var el=document.getElementById('video_link');el.href=u;" +
+            "var tu=atob('aHR0cHM6Ly90d2l0dGVyLmNvbS91L3N0YXR1cy8x');})();</script>";
+        Check("twjn から twimg の直リンクを採る",
+              MonsnodeResolver.ExtractMediaUrl(twjn),
+              "https://video.twimg.com/ext_tw_video/1/pu/vid/1280x720/x.mp4?tag=12");
+
+        // atob の順序が逆でも host で選ぶ（位置に依存しない）
+        const string twjnSwapped =
+            "var tu=atob('aHR0cHM6Ly90d2l0dGVyLmNvbS91L3N0YXR1cy8x');" +
+            "var u=atob('aHR0cHM6Ly92aWRlby50d2ltZy5jb20vYW1wbGlmeV92aWRlby8yL3kubXA0');";
+        Check("atob の順序が逆でも twimg を採る",
+              MonsnodeResolver.ExtractMediaUrl(twjnSwapped),
+              "https://video.twimg.com/amplify_video/2/y.mp4");
+
+        Check("twimg の atob が無ければ null",
+              MonsnodeResolver.ExtractMediaUrl("var x=atob('aHR0cHM6Ly9leGFtcGxlLmNvbS96Lm1wNA==');"),
+              null);
+    }
 
     /// <summary>
     /// ログインで受け取った Cookie の変換。cookies.txt の形式は yt-dlp 側が

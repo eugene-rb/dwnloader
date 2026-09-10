@@ -559,8 +559,9 @@ public sealed class Session : IDisposable
         if (MediaKind.IsMedia(entry.Reference.Kind))
         {
             _manager.SetWorkers(DownloadManager.LaneMedia, settings.VideoWorkers);
-            _ = _manager.SubmitAsync(new MediaJob(jobId, entry.Reference, settings, events),
-                                     DownloadManager.LaneMedia);
+            _ = _manager.SubmitAsync(
+                new MediaJob(jobId, entry.Reference, settings, events, _client),
+                DownloadManager.LaneMedia);
         }
         else
         {

@@ -98,6 +98,12 @@ public static partial class UrlDetect
         // 85PO は 85po.com / 85po.net を現行ミラーとして使い、旧URL には
         // 85xo.com もある。同じ動画IDなら同一サイトとして重複排除する。
         new("85po", Rx(@"^https?://(?:www\.)?(?:85po\.com|85po\.net|85xo\.com)/(?:[a-z]{2}/)?v/(?<id>\d+)(?:/|$)")),
+        // monsnode.com は Twitter/X の動画を素材リンク付きで索引しているサイト。
+        // yt-dlp は非対応（ページに <video> も og:video も無い）なので、実体URL
+        // への解決は MonsnodeResolver がページを読んで行う。ここで取る id は
+        // パスの /v<数字> だが、これは「元ツイートのID」ではない（別ツイートを
+        // 指すことも、既に消えたIDのこともある）。重複排除とカード表示専用。
+        new("monsnode", Rx(@"^https?://(?:www\.)?monsnode\.com/v(?<id>\d+)(?:$|[/?#])")),
         new("pornhub", Rx(@"^https?://(?:[\w-]+\.)?pornhub\.com/view_video\.php\?viewkey=(?<id>\w+)")),
         new("xvideos", Rx(@"^https?://(?:www\.)?xvideos\.com/(?<id>video[\w.]+)")),
         new("fc2", Rx(@"^https?://video\.fc2\.com/(?:[a-z]{2}/)?content/(?<id>\w+)")),

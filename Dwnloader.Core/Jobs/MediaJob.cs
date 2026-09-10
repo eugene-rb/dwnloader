@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Dwnloader.Auth;
 using Dwnloader.Core;
+using Dwnloader.Sites;
 
 namespace Dwnloader.Jobs;
 
@@ -54,6 +55,7 @@ public sealed partial class MediaJob : JobBase
         "--convert-thumbnails", "jpg",
     };
 
+    private readonly HttpClient _client;
     private readonly bool _playlistAll;
     private bool _metaSent;
     private bool _processing;
@@ -64,9 +66,18 @@ public sealed partial class MediaJob : JobBase
     private string _title = "";
     private readonly List<string> _errorLines = new();
 
-    public MediaJob(string jobId, SourceRef reference, SettingsData settings, JobEvents events)
+    /// <summary>
+    /// yt-dlp へ実際に渡すURL。既定は貼られたURLそのままだが、monsnode の
+    /// ように yt-dlp が扱えないサイトは走行時に実体URLへ差し替える。
+    /// </summary>
+    private string _targetUrl;
+
+    public MediaJob(string jobId, SourceRef reference, SettingsData settings, JobEvents events,
+                    HttpClient client)
         : base(jobId, reference, settings, events)
     {
+        _client = client;
+        _targetUrl = reference.Url;
         // 走り出した後にトグルが変わっても、このジョブの動きは変えない
         _playlistAll = settings.PlaylistAll;
     }
@@ -87,6 +98,9 @@ public sealed partial class MediaJob : JobBase
         {
             Token.ThrowIfCancellationRequested();
             SetStatus(JobStatus.Fetching);
+
+            if (Reference.Site == "monsnode" && !await TryResolveMonsnodeAsync().ConfigureAwait(false))
+                return;
 
             var psi = BuildStartInfo(resolved);
             proc = Process.Start(psi)
@@ -160,6 +174,32 @@ public sealed partial class MediaJob : JobBase
                 YtDlp.KillTree(proc);
                 proc.Dispose();
             }
+        }
+    }
+
+    /// <summary>
+    /// monsnode の動画ページを twimg の直リンクへ解決して <see cref="_targetUrl"/>
+    /// に入れる。解決できなければジョブを失敗で終わらせて false を返す
+    /// （呼び出し側はそのまま return する）。
+    /// </summary>
+    private async Task<bool> TryResolveMonsnodeAsync()
+    {
+        try
+        {
+            _targetUrl = await MonsnodeResolver
+                .ResolveAsync(_client, Reference.Url, Settings, Token)
+                .ConfigureAwait(false);
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception e) when (e is SiteException or TransientException)
+        {
+            Log("error", $"{Reference.Url}: {e.Message}");
+            Finish(false, "", e.Message);
+            return false;
         }
     }
 
@@ -314,7 +354,7 @@ public sealed partial class MediaJob : JobBase
         }
 
         a.Add("--");
-        a.Add(Reference.Url);
+        a.Add(_targetUrl);
         return psi;
     }
 

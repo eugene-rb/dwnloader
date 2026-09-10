@@ -286,8 +286,12 @@ public static class Compare
             Finished = (_, r) => { savedPath = r.Path; },
         };
 
-        var reference = new SourceRef("test", "probe", url, MediaKind.Video);
-        var job = new MediaJob("probe", reference, settings, events);
+        // 既知サイト（monsnode など）は本来の site 名で作り、解決経路まで通す
+        var known = UrlDetect.MatchKnownSite(url);
+        var reference = new SourceRef(known?.Site ?? "test", known?.Gid ?? "probe",
+                                      url, MediaKind.Video);
+        using var client = Net.CreateClient(settings: settings);
+        var job = new MediaJob("probe", reference, settings, events, client);
         await job.RunAsync().ConfigureAwait(false);
 
         Console.WriteLine();
