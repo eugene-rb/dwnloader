@@ -175,6 +175,8 @@ public partial class SettingsWindow : Window
         Retries.Value = s.Retries;
         Timeout.Value = s.Timeout;
         ProxyUrl.Text = s.ProxyUrl;
+        UseDoh.IsChecked = s.UseDoh;
+        DohEndpoint.Text = s.DohEndpoint;
         ClipboardBlacklist.Text = s.ClipboardBlacklist;
         ClipboardWhitelist.Text = s.ClipboardWhitelist;
 
@@ -223,6 +225,8 @@ public partial class SettingsWindow : Window
         s.Retries = NumberOr(Retries, s.Retries);
         s.Timeout = NumberOr(Timeout, (int)s.Timeout);
         s.ProxyUrl = ProxyUrl.Text.Trim();
+        s.UseDoh = UseDoh.IsChecked == true;
+        s.DohEndpoint = DohEndpoint.Text.Trim();
         s.ClipboardBlacklist = ClipboardBlacklist.Text;
         s.ClipboardWhitelist = ClipboardWhitelist.Text;
 

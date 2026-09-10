@@ -30,6 +30,14 @@ public sealed partial class MediaJob : JobBase
         ["480"] = "bestvideo[height<=?480]+bestaudio/best[height<=?480]/best",
     };
 
+    /// <summary>
+    /// ブラウザ以外からの接続を TLS の握手の癖で見分けて拒むサイト。
+    /// ここに挙げたサイトでだけ yt-dlp の偽装を使う。全サイトで有効にすると、
+    /// 今まで問題なく取れていたサイトの通信まで変えてしまう。
+    /// </summary>
+    private static readonly HashSet<string> ImpersonateSites =
+        new(StringComparer.OrdinalIgnoreCase) { "85po" };
+
     // 行の種類を見分ける印。タイトルに現れない綴りを選ぶ。
     private const string ProgTag = "@@P@@";
     private const string DoneTag = "@@D@@";
@@ -101,6 +109,11 @@ public sealed partial class MediaJob : JobBase
 
             if (Reference.Site == "monsnode" && !await TryResolveMonsnodeAsync().ConfigureAwait(false))
                 return;
+
+            // 偽装が要るサイトなのに使えない yt-dlp だと 403 で終わる。
+            // 何が足りないのかは出力からは読み取れないので先に伝える。
+            if (ImpersonateSites.Contains(Reference.Site) && !YtDlp.SupportsImpersonation(resolved))
+                Log("warn", YtDlp.ImpersonateHint);
 
             var psi = BuildStartInfo(resolved);
             proc = Process.Start(psi)
@@ -256,10 +269,24 @@ public sealed partial class MediaJob : JobBase
         a.Add("--fragment-retries"); a.Add(retries.ToString(CultureInfo.InvariantCulture));
         a.Add("--socket-timeout");
         a.Add(Settings.Timeout.ToString("F0", CultureInfo.InvariantCulture));
-        if (!string.IsNullOrWhiteSpace(Settings.ProxyUrl))
+        // ユーザーが指定したプロキシがあればそれを使う（名前解決もその先で
+        // 行われるので DoH は要らない）。無指定なら、DoH で名前を引くための
+        // 内蔵プロキシへ通す。yt-dlp は別プロセスで自分で名前を引くため、
+        // ここを経由させないと ISP に塞がれたサイトが落とせない。
+        var proxy = (Settings.ProxyUrl ?? "").Trim();
+        if (proxy.Length == 0) proxy = Net.DohProxyUrl;
+        if (proxy.Length > 0)
         {
             a.Add("--proxy");
-            a.Add(Settings.ProxyUrl.Trim());
+            a.Add(proxy);
+        }
+
+        // 偽装は取得も含めた全ての通信に掛ける必要がある。extractor-args で
+        // 指定するとページの解析だけが通り、本体の取得が 403 で落ちる。
+        if (ImpersonateSites.Contains(Reference.Site) && YtDlp.SupportsImpersonation(resolved))
+        {
+            a.Add("--impersonate");
+            a.Add("chrome");
         }
         a.Add("--windows-filenames");
         a.Add("--trim-filenames");

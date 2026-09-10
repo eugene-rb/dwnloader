@@ -53,6 +53,16 @@ public sealed class SettingsData
     /// <summary>Optional proxy URL for app HTTP and yt-dlp. Empty means system/default network.</summary>
     [JsonPropertyName("proxy_url")] public string ProxyUrl { get; set; } = "";
 
+    /// <summary>
+    /// 名前解決を DNS-over-HTTPS で行う。ISP のリゾルバがシンクホールや
+    /// NXDOMAIN を返して繋がらないサイト（85po・pornhub・xvideos など）が
+    /// これで通る。汚染されていないサイトの挙動は変わらない。
+    /// </summary>
+    [JsonPropertyName("use_doh")] public bool UseDoh { get; set; } = true;
+
+    /// <summary>DoH の問い合わせ先。IP リテラルにしておく（理由は DohResolver）。</summary>
+    [JsonPropertyName("doh_endpoint")] public string DohEndpoint { get; set; } = DohResolver.DefaultEndpoint;
+
     /// <summary>hitomi の画像形式優先: avif / webp。</summary>
     [JsonPropertyName("prefer_format")] public string PreferFormat { get; set; } = "avif";
     [JsonPropertyName("jpeg_quality")] public int JpegQuality { get; set; } = 90;
@@ -166,6 +176,16 @@ public sealed class AppSettings : IDisposable
         s.MediaCookiesFile ??= "";
         s.YtDlpPath ??= "";
         s.ProxyUrl = NormalizeProxyUrl(s.ProxyUrl);
+        s.DohEndpoint = NormalizeDohEndpoint(s.DohEndpoint);
+    }
+
+    /// <summary>DoH の問い合わせ先を検証する。https 以外は既定へ戻す。</summary>
+    private static string NormalizeDohEndpoint(string? value)
+    {
+        var endpoint = (value ?? "").Trim();
+        if (endpoint.Length == 0) return DohResolver.DefaultEndpoint;
+        if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var uri)) return DohResolver.DefaultEndpoint;
+        return uri.Scheme == Uri.UriSchemeHttps ? endpoint : DohResolver.DefaultEndpoint;
     }
 
     private static string NormalizeProxyUrl(string? value)

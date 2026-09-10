@@ -83,6 +83,8 @@ public sealed class Session : IDisposable
         _queueStore = queueStore;
 
         var s = settings.Current;
+        // クライアントを作る前に済ませる。ConnectCallback は生成時に焼き込まれる。
+        Net.ConfigureDns(s);
         _client = CreateClientFor(s);
         _clients.Add(_client);
         _manager = new DownloadManager(new Dictionary<string, int>
@@ -1195,10 +1197,14 @@ public sealed class Session : IDisposable
                               || before.AudioDir != values.AudioDir
                               || before.ScanDirs != values.ScanDirs;
         bool clientChanged = before.ProxyUrl != values.ProxyUrl
-                             || before.ImageWorkers != values.ImageWorkers;
+                             || before.ImageWorkers != values.ImageWorkers
+                             || before.UseDoh != values.UseDoh
+                             || before.DohEndpoint != values.DohEndpoint;
 
         _settings.Replace(values);
         var s = Settings;
+        // 作り直す前に。新しい設定を ConnectCallback へ反映させる。
+        Net.ConfigureDns(s);
         if (clientChanged)
         {
             _client = CreateClientFor(s);

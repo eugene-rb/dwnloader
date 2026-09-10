@@ -60,6 +60,71 @@ public static class YtDlp
         "yt-dlp が見つかりません。`winget install yt-dlp.yt-dlp` または " +
         "`pip install yt-dlp` で導入するか、設定でパスを指定してください。";
 
+    /// <summary>偽装に対応していない yt-dlp を使っているときの案内。</summary>
+    public const string ImpersonateHint =
+        "このサイトはブラウザ以外からの接続を拒むため、yt-dlp の偽装機能が要ります。" +
+        "公式の yt-dlp.exe（https://github.com/yt-dlp/yt-dlp/releases）を使うか、" +
+        "`pip install curl-cffi` を入れてください。";
+
+    private static bool? _impersonation;
+
+    /// <summary>
+    /// curl_cffi による偽装（--impersonate）が使えるか。
+    ///
+    /// Cloudflare の一部の設定は TLS の握手の癖でブラウザかどうかを見ており、
+    /// User-Agent を変えるだけでは通らない。公式の yt-dlp.exe は curl_cffi を
+    /// 同梱しているが、pip で入れた yt-dlp には付いていないことがある。
+    ///
+    /// 調べるのに1プロセス起動するので、結果は覚えておく。
+    /// </summary>
+    public static bool SupportsImpersonation(Resolved resolved)
+    {
+        lock (Gate)
+        {
+            if (_impersonation is { } known) return known;
+
+            bool available = false;
+            try
+            {
+                var psi = new ProcessStartInfo(resolved.Exe)
+                {
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                };
+                foreach (var p in resolved.Prefix) psi.ArgumentList.Add(p);
+                psi.ArgumentList.Add("--no-update");
+                psi.ArgumentList.Add("--list-impersonate-targets");
+
+                using var proc = Process.Start(psi);
+                if (proc is not null)
+                {
+                    var output = proc.StandardOutput.ReadToEnd();
+                    if (!proc.WaitForExit(15000)) KillTree(proc);
+                    // 対応していない環境も一覧自体は出すが、行末に
+                    // 「(unavailable)」が付く。使える行が1つでもあれば良い。
+                    foreach (var line in output.Split('\n'))
+                    {
+                        if (line.Contains("curl_cffi", StringComparison.OrdinalIgnoreCase) &&
+                            !line.Contains("unavailable", StringComparison.OrdinalIgnoreCase))
+                        {
+                            available = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                available = false;
+            }
+
+            _impersonation = available;
+            return available;
+        }
+    }
+
     private static string? FindOnPath(string fileName)
     {
         var paths = Environment.GetEnvironmentVariable("PATH") ?? "";

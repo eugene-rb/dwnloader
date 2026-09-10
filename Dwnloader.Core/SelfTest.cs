@@ -41,6 +41,7 @@ public static class SelfTest
         TestGgParsing();
         TestMediaMatching();
         TestMonsnodeResolver();
+        TestDohSettings();
         TestSourceKeys();
         TestLibraryIndex();
         TestCookieStore();
@@ -532,6 +533,39 @@ public static class SelfTest
         Check("カンマ区切りも読む", folders[1], @"C:\B");
         Check("引用符と空白を落とす", folders[2], @"C:\C");
         Check("空欄は0件", LibraryIndex.ParseFolderList("").Count, 0);
+    }
+
+    /// <summary>
+    /// DoH の設定と組み立て。ネットワークには出ない範囲だけを見る
+    /// （実際の名前解決は相手側の都合で変わるのでテストにしない）。
+    /// </summary>
+    private static void TestDohSettings()
+    {
+        Section("DNS-over-HTTPS");
+
+        var defaults = new SettingsData();
+        Check("既定で有効", defaults.UseDoh, true);
+        Check("既定の問い合わせ先はIPリテラル", defaults.DohEndpoint, DohResolver.DefaultEndpoint);
+
+        // 無効なら解決器もプロキシも作らない（今まで通り OS のリゾルバ）
+        Net.ConfigureDns(new SettingsData { UseDoh = false });
+        Check("無効なら解決器を持たない", Net.Resolver is null, true);
+        Check("無効ならプロキシを立てない", Net.DohProxyUrl, "");
+
+        Net.ConfigureDns(new SettingsData { UseDoh = true });
+        Check("有効なら解決器を持つ", Net.Resolver is not null, true);
+        // 認証の無い素通しプロキシなので、外から届く場所に立ててはいけない
+        Check("プロキシはループバックのみ",
+              Net.DohProxyUrl.StartsWith("http://127.0.0.1:", StringComparison.Ordinal), true);
+
+        // 既に IP のものを問い合わせに行くと、その分だけ待たされる
+        var literal = Net.Resolver!.ResolveAsync("104.26.7.219", default)
+                         .GetAwaiter().GetResult();
+        Check("IPリテラルは問い合わせずそのまま返す", literal.Length == 1, true);
+        Check("IPリテラルの値", literal[0].ToString(), "104.26.7.219");
+
+        Net.ConfigureDns(null);
+        Check("後始末でプロキシを畳む", Net.DohProxyUrl, "");
     }
 
     private static void TestSourceKeys()

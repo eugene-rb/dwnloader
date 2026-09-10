@@ -229,6 +229,21 @@
 
                         <Border Style="{StaticResource CardBorderStyle}">
                             <StackPanel Spacing="2">
+                                <TextBlock Text="名前解決（DNS）" Style="{StaticResource CardTitleStyle}"/>
+
+                                <CheckBox x:Name="UseDoh" Content="DNS-over-HTTPS で名前を引く"/>
+                                <TextBlock Text="プロバイダのDNSが塞いでいるサイトに繋がるようになります。塞がれていないサイトの動きは変わりません。Proxy URL を指定している場合はそちらが優先されます。"
+                                           Style="{StaticResource CardHintStyle}"/>
+
+                                <TextBlock Text="問い合わせ先" Style="{StaticResource FieldLabelStyle}"/>
+                                <TextBox x:Name="DohEndpoint" PlaceholderText="https://1.1.1.1/dns-query"/>
+                                <TextBlock Text="ホスト名ではなくIPアドレスの指定を推奨します（例: https://1.1.1.1/dns-query, https://8.8.8.8/resolve）。"
+                                           Style="{StaticResource CardHintStyle}"/>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource CardBorderStyle}">
+                            <StackPanel Spacing="2">
                                 <TextBlock Text="クリップボード監視のドメイン" Style="{StaticResource CardTitleStyle}"/>
 
                                 <TextBlock Text="除外ドメイン（カンマ区切り・完全一致）" Style="{StaticResource FieldLabelStyle}"/>

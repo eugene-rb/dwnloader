@@ -122,8 +122,11 @@ public static class Compare
         Console.WriteLine();
 
         int failed = 0;
-        using var client = Net.CreateClient();
+        // 設定を先に作る。DoH の準備は HttpClient を作る前に済ませる必要がある
+        // （ConnectCallback は生成時に焼き込まれる）。
         var settings = new SettingsData();
+        Net.ConfigureDns(settings);
+        using var client = Net.CreateClient(settings: settings);
         using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3));
         var ctx = new SiteContext { Client = client, Settings = settings, Cancel = cts.Token };
 
@@ -273,6 +276,8 @@ public static class Compare
         Directory.CreateDirectory(tmp);
 
         var settings = new SettingsData { VideoDir = tmp, AudioDir = tmp, Timeout = 60 };
+        // 画面から動かすときは Session が済ませている。ここは通らないので明示する。
+        Net.ConfigureDns(settings);
         string title = "", subtitle = "", savedPath = "", lastDetail = "";
         int progressCount = 0, metaCount = 0;
         var statuses = new List<string>();

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Sockets;
 
 namespace Dwnloader.Core;
 
@@ -60,6 +61,58 @@ public static class Net
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
         "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
+    // ---------------------------------------------------------------- 名前解決
+
+    private static readonly object _dnsGate = new();
+    private static DohResolver? _resolver;
+    private static DohProxy? _proxy;
+    private static string _dnsKey = "";
+
+    /// <summary>DoH が有効なときの解決器。無効なら null（OS のリゾルバに任せる）。</summary>
+    public static DohResolver? Resolver { get { lock (_dnsGate) return _resolver; } }
+
+    /// <summary>
+    /// yt-dlp に渡すループバックプロキシの URL。DoH が無効なら空。
+    /// yt-dlp は別プロセスで自分で名前を引くため、これを経由させないと
+    /// 塞がれたサイトはアプリ側だけ直っても落とせない。
+    /// </summary>
+    public static string DohProxyUrl { get { lock (_dnsGate) return _proxy?.Url ?? ""; } }
+
+    /// <summary>
+    /// 設定に合わせて DoH の準備をし直す。起動時と設定変更時に呼ぶ。
+    /// 設定が変わっていなければ何もしない（プロキシのポートを保つ）。
+    /// </summary>
+    public static void ConfigureDns(SettingsData? settings)
+    {
+        bool enabled = settings?.UseDoh ?? false;
+        var endpoint = (settings?.DohEndpoint ?? "").Trim();
+        var key = enabled ? endpoint : "";
+
+        lock (_dnsGate)
+        {
+            if (key == _dnsKey && (_resolver is not null) == enabled) return;
+            _dnsKey = key;
+
+            _proxy?.Dispose();
+            _resolver?.Dispose();
+            _proxy = null;
+            _resolver = null;
+
+            if (!enabled) return;
+
+            _resolver = new DohResolver(endpoint);
+            try
+            {
+                _proxy = new DohProxy(_resolver);
+            }
+            catch
+            {
+                // ループバックで待てない環境。アプリ側の解決だけ生かす。
+                _proxy = null;
+            }
+        }
+    }
+
     /// <summary>
     /// アプリ全体で1つの HttpClient を使い回す。作り直すとソケットを使い潰す。
     /// 個別のヘッダ（Referer など）はリクエストごとに付けるので、ここには入れない。
@@ -81,12 +134,46 @@ public static class Net
             handler.UseProxy = true;
         }
 
+        // 接続先の IP だけを差し替える。TLS はこの後 .NET が元のホスト名で
+        // 張るので、SNI と Host は正しいまま残る（curl の --resolve と同じ）。
+        var resolver = Resolver;
+        if (resolver is not null)
+            handler.ConnectCallback = (ctx, ct) => ConnectViaDohAsync(resolver, ctx, ct);
+
         var client = new HttpClient(handler, disposeHandler: true);
         client.DefaultRequestHeaders.UserAgent.ParseAdd(UserAgent);
         client.DefaultRequestHeaders.AcceptLanguage.ParseAdd("ja,en-US;q=0.8,en;q=0.6");
         // タイムアウトは呼び出しごとに CancellationToken で制御する
         client.Timeout = Timeout.InfiniteTimeSpan;
         return client;
+    }
+
+    /// <summary>
+    /// DoH で引いたアドレスへ TCP で繋ぎ、そのままのストリームを返す。
+    /// 引けなければホスト名で繋ぎ直し、今まで通り OS のリゾルバに委ねる。
+    /// </summary>
+    private static async ValueTask<Stream> ConnectViaDohAsync(
+        DohResolver resolver, SocketsHttpConnectionContext ctx, CancellationToken ct)
+    {
+        var socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+        try
+        {
+            var host = ctx.DnsEndPoint.Host;
+            var port = ctx.DnsEndPoint.Port;
+
+            var addresses = await resolver.ResolveAsync(host, ct).ConfigureAwait(false);
+            if (addresses.Length > 0)
+                await socket.ConnectAsync(addresses, port, ct).ConfigureAwait(false);
+            else
+                await socket.ConnectAsync(host, port, ct).ConfigureAwait(false);
+
+            return new NetworkStream(socket, ownsSocket: true);
+        }
+        catch
+        {
+            socket.Dispose();
+            throw;
+        }
     }
 
     /// <summary>
