@@ -300,6 +300,19 @@ public static class SelfTest
               UrlDetect.MatchKnownSite("https://monsnode.com/"), null);
         Check("monsnode の /v は数字のみ（slug は拾わない）",
               UrlDetect.MatchKnownSite("https://monsnode.com/video/foo"), null);
+        foreach (var url in new[] {
+            "https://monsnode.com/twjn.phpv=26253700",
+            "https://monsnode.com/twjn.php?v=26253700",
+            "http://www.monsnode.com/twjn.php?v=26253700&x=1#video" })
+        {
+            Check("twjn を monsnode として判定", UrlDetect.MatchKnownSite(url)?.Site, "monsnode");
+            Check("twjn の表記違いは同じキー", UrlDetect.MatchKnownSite(url)?.Gid, "twjn-26253700");
+        }
+        foreach (var url in new[] {
+            "https://monsnode.com/twjn.php?v=",
+            "https://monsnode.com/twjn.php?v=26253700abc",
+            "https://monsnode.com.evil.example/twjn.php?v=26253700" })
+            Check("不正な twjn は拾わない", UrlDetect.MatchKnownSite(url), null);
 
         var direct = UrlDetect.MatchKnownSite("https://example.com/movie.mp4");
         Check("直リンクの動画を判定", direct?.Site, "file");
@@ -361,6 +374,45 @@ public static class SelfTest
         Check("twimg の atob が無ければ null",
               MonsnodeResolver.ExtractMediaUrl("var x=atob('aHR0cHM6Ly9leGFtcGxlLmNvbS96Lm1wNA==');"),
               null);
+
+        // 通信先を固定し、補正前URLやおすすめ動画へアクセスしないことも検証する。
+        foreach (var input in new[] {
+            "https://monsnode.com/twjn.phpv=26253700",
+            "https://monsnode.com/twjn.php?v=26253700",
+            "https://monsnode.com/v123" })
+        {
+            var requests = new List<string>();
+            using var client = new HttpClient(new MonsnodeTestHandler(request =>
+            {
+                var url = request.RequestUri!.AbsoluteUri;
+                requests.Add(url);
+                if (url == "https://monsnode.com/v123")
+                    return new HttpResponseMessage(System.Net.HttpStatusCode.OK) {
+                        Content = new StringContent("<a href='redirect.php?v=26253700'>video</a>") };
+                if (url == "https://monsnode.com/twjn.php?v=26253700")
+                    return new HttpResponseMessage(System.Net.HttpStatusCode.OK) {
+                        Content = new StringContent(twjn) };
+                if (url == "https://video.twimg.com/ext_tw_video/1/pu/vid/1280x720/x.mp4?tag=12")
+                {
+                    Check("素材は先頭1バイトのみ確認", request.Headers.Range?.ToString(), "bytes=0-0");
+                    return new HttpResponseMessage(System.Net.HttpStatusCode.PartialContent) {
+                        Content = new ByteArrayContent(new byte[] { 0 }) };
+                }
+                throw new InvalidOperationException("想定外のアクセス: " + url);
+            }));
+            var resolved = MonsnodeResolver.ResolveAsync(client, input,
+                new SettingsData { Retries = 0 }, CancellationToken.None).GetAwaiter().GetResult();
+            Check("入力形式にかかわらず目的の動画へ解決", resolved,
+                "https://video.twimg.com/ext_tw_video/1/pu/vid/1280x720/x.mp4?tag=12");
+            Check("twjn は動画情報を直接取得", requests.Count, input.EndsWith("/v123") ? 3 : 2);
+        }
+    }
+
+    private sealed class MonsnodeTestHandler(Func<HttpRequestMessage, HttpResponseMessage> respond)
+        : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+            => Task.FromResult(respond(request));
     }
 
     /// <summary>

@@ -20,6 +20,16 @@ namespace Dwnloader.Sites;
 /// </summary>
 public static partial class MonsnodeResolver
 {
+    [GeneratedRegex(@"^https?://(?:www\.)?monsnode\.com/twjn\.php\??v=(?<id>[0-9]+)(?:$|[&#])", RegexOptions.IgnoreCase)]
+    private static partial Regex TwjnUrl();
+
+    /// <summary>通常のリンクと「?」が欠けたリンクから内部IDを取り出す。</summary>
+    public static string? ExtractTwjnId(string url)
+    {
+        var match = TwjnUrl().Match(url);
+        return match.Success ? match.Groups["id"].Value : null;
+    }
+
     [GeneratedRegex(@"redirect\.php\?v=(\d+)", RegexOptions.IgnoreCase)]
     private static partial Regex RedirectId();
 
@@ -83,20 +93,26 @@ public static partial class MonsnodeResolver
     public static async Task<string> ResolveAsync(
         HttpClient client, string pageUrl, SettingsData settings, CancellationToken ct)
     {
-        var page = await Net.GetWithRetryAsync(
-            client, pageUrl,
-            new Dictionary<string, string> { ["Referer"] = "https://monsnode.com/" },
-            settings.Timeout, settings.Retries, null, ct).ConfigureAwait(false);
-        if (page.StatusCode != 200)
-            throw new SiteException($"monsnode のページを取得できません (HTTP {page.StatusCode})");
-
-        var internalId = ExtractInternalId(page.Text());
+        var internalId = ExtractTwjnId(pageUrl);
+        var referer = "https://monsnode.com/";
         if (internalId is null)
-            throw new SiteException("monsnode のページ構造が変わったようです（動画リンクが見つかりません）");
+        {
+            var page = await Net.GetWithRetryAsync(
+                client, pageUrl,
+                new Dictionary<string, string> { ["Referer"] = referer },
+                settings.Timeout, settings.Retries, null, ct).ConfigureAwait(false);
+            if (page.StatusCode != 200)
+                throw new SiteException($"monsnode のページを取得できません (HTTP {page.StatusCode})");
+
+            internalId = ExtractInternalId(page.Text());
+            if (internalId is null)
+                throw new SiteException("monsnode のページ構造が変わったようです（動画リンクが見つかりません）");
+            referer = pageUrl;
+        }
 
         var twjn = await Net.GetWithRetryAsync(
             client, $"https://monsnode.com/twjn.php?v={internalId}",
-            new Dictionary<string, string> { ["Referer"] = pageUrl },
+            new Dictionary<string, string> { ["Referer"] = referer },
             settings.Timeout, settings.Retries, null, ct).ConfigureAwait(false);
         if (twjn.StatusCode != 200)
             throw new SiteException($"monsnode の動画情報を取得できません (HTTP {twjn.StatusCode})");

@@ -128,6 +128,10 @@ public static partial class UrlDetect
     /// </summary>
     public static MediaMatch? MatchKnownSite(string url)
     {
+        // 内部IDは /v のページIDとは別の番号なので、キーを分ける。
+        if (Dwnloader.Sites.MonsnodeResolver.ExtractTwjnId(url) is { } internalId)
+            return new MediaMatch("monsnode", "twjn-" + internalId);
+
         foreach (var site in Sites)
         {
             var m = site.Pattern.Match(url);
