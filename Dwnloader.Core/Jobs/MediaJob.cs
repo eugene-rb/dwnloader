@@ -74,6 +74,7 @@ public sealed partial class MediaJob : JobBase
     private string _title = "";
     private string _resolvedTitle = "";
     private string _outputTemplate = OutputTemplate;
+    private string _pageReferer = "";
     private readonly List<string> _errorLines = new();
 
     /// <summary>
@@ -233,6 +234,7 @@ public sealed partial class MediaJob : JobBase
                 .ConfigureAwait(false);
             _targetUrl = resolved.MediaUrl;
             _resolvedTitle = resolved.Title;
+            _pageReferer = resolved.PageUrl;
 
             var suffix = $" [85po] (85po-{Reference.Gid})";
             int maxLen = Math.Max(40, Settings.FilenameMaxLen);
@@ -333,7 +335,9 @@ public sealed partial class MediaJob : JobBase
         if (Reference.Site == "85po")
         {
             a.Add("--referer");
-            a.Add(Reference.Url);
+            a.Add(_pageReferer);
+            a.Add("--user-agent");
+            a.Add(Net.UserAgent);
         }
         a.Add("--windows-filenames");
         a.Add("--trim-filenames");

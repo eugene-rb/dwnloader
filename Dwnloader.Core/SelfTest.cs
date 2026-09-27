@@ -377,6 +377,33 @@ public static class SelfTest
             new SettingsData { Retries = 0 }, CancellationToken.None).GetAwaiter().GetResult();
         Check("85po の解決結果", resolved.MediaUrl,
               "https://cdn.example/1_720p.mp4/?t=b");
+
+        var requests = 0;
+        using var mirrorClient = new HttpClient(new MonsnodeTestHandler(request =>
+        {
+            requests++;
+            if (requests == 1)
+            {
+                Check("85po は元のドメインを先に読む", request.RequestUri?.Host,
+                      "www.85po.com");
+                return new HttpResponseMessage(System.Net.HttpStatusCode.Forbidden);
+            }
+            Check("85po は403でミラーへ切り替える", request.RequestUri?.Host,
+                  "www.85po.net");
+            Check("85po ミラーの Referer", request.Headers.Referrer?.AbsoluteUri,
+                  "https://www.85po.net/");
+            return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent(links),
+            };
+        }));
+        var mirrored = EightyFivePoResolver.ResolveAsync(mirrorClient,
+            "https://www.85po.com/ja/video/35829/example/", "720",
+            new SettingsData { Retries = 1 }, CancellationToken.None).GetAwaiter().GetResult();
+        Check("85po ミラーの動画URL", mirrored.MediaUrl,
+              "https://www.85po.net/ja/get_file/3/token/1000/1/1_720p.mp4/?download=true");
+        Check("85po 本体取得用の Referer", mirrored.PageUrl,
+              "https://www.85po.net/ja/video/35829/example/");
     }
 
     /// <summary>

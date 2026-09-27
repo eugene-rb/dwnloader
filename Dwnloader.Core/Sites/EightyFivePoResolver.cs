@@ -11,7 +11,7 @@ namespace Dwnloader.Sites;
 /// </summary>
 public static partial class EightyFivePoResolver
 {
-    public sealed record Resolved(string MediaUrl, string Title, int Height);
+    public sealed record Resolved(string MediaUrl, string Title, int Height, string PageUrl);
 
     [GeneratedRegex(
         "[\\\"']?(?<key>video(?:_alt)?_url\\d*)[\\\"']?\\s*:\\s*['\\\"](?<url>https?://[^'\\\"]+)['\\\"]",
@@ -97,7 +97,7 @@ public static partial class EightyFivePoResolver
         var title = titleMatch.Success
             ? WebUtility.HtmlDecode(titleMatch.Groups["title"].Value).Trim()
             : "";
-        return new Resolved(selected.Url, title, selected.Height);
+        return new Resolved(selected.Url, title, selected.Height, pageUrl ?? "");
     }
 
     public static async Task<Resolved> ResolveAsync(
@@ -105,16 +105,41 @@ public static partial class EightyFivePoResolver
         SettingsData settings, CancellationToken ct)
     {
         var uri = new Uri(pageUrl);
-        var origin = uri.GetLeftPart(UriPartial.Authority) + "/";
-        var page = await Net.GetWithRetryAsync(
-            client, pageUrl,
-            new Dictionary<string, string> { ["Referer"] = origin },
-            settings.Timeout, settings.Retries, null, ct).ConfigureAwait(false);
+        var page = await FetchPageAsync(client, uri, settings, ct).ConfigureAwait(false);
+        // 85po.com が 403 を返しても、同じ動画が 85po.net では公開されている。
+        // 動画 ID とパスを保ってミラーを試し、実際に読めたページを Referer に使う。
+        if (page.StatusCode == 403 && MirrorOf(uri) is { } mirror)
+        {
+            uri = mirror;
+            page = await FetchPageAsync(client, uri, settings, ct).ConfigureAwait(false);
+        }
         if (page.StatusCode != 200)
             throw new SiteException($"85po のページを取得できません (HTTP {page.StatusCode})");
 
-        return Extract(page.Text(), preferredQuality, pageUrl)
+        return Extract(page.Text(), preferredQuality, uri.AbsoluteUri)
                ?? throw new SiteException(
                    "85po のページ構造が変わったようです（動画リンクが見つかりません）");
+    }
+
+    private static Task<HttpResult> FetchPageAsync(
+        HttpClient client, Uri uri, SettingsData settings, CancellationToken ct) =>
+        Net.GetWithRetryAsync(client, uri.AbsoluteUri,
+            new Dictionary<string, string>
+            {
+                ["Referer"] = uri.GetLeftPart(UriPartial.Authority) + "/",
+            },
+            settings.Timeout, settings.Retries, null, ct);
+
+    private static Uri? MirrorOf(Uri uri)
+    {
+        var host = uri.Host.ToLowerInvariant();
+        var mirrorHost = host switch
+        {
+            "85po.com" or "www.85po.com" => "www.85po.net",
+            "85po.net" or "www.85po.net" => "www.85po.com",
+            "85xo.com" or "www.85xo.com" => "www.85po.net",
+            _ => null,
+        };
+        return mirrorHost is null ? null : new UriBuilder(uri) { Host = mirrorHost }.Uri;
     }
 }
