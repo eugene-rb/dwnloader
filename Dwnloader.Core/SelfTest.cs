@@ -40,6 +40,7 @@ public static class SelfTest
         TestDateParsing();
         TestGgParsing();
         TestMediaMatching();
+        TestEightyFivePoResolver();
         TestMonsnodeResolver();
         TestDohSettings();
         TestSourceKeys();
@@ -277,6 +278,10 @@ public static class SelfTest
         var po85Ja = UrlDetect.MatchKnownSite(
             "https://www.85po.com/ja/v/19778/na-na-ni--bao-guan-ku/");
         Check("85po.com の言語付きURL", po85Ja?.Gid, "19778");
+        var po85Video = UrlDetect.MatchKnownSite(
+            "https://www.85po.net/ja/video/35737/xiang-gang-xue-sheng-mei/");
+        Check("85po の現行 video URL", po85Video?.Site, "85po");
+        Check("85po の現行 video ID", po85Video?.Gid, "35737");
         Check("85po.com の一覧ページは拾わない",
               UrlDetect.MatchKnownSite("https://www.85po.com/ja/latest-updates/"), null);
 
@@ -323,6 +328,55 @@ public static class SelfTest
         // ハッシュは安定していること（同じURLなら毎回同じ）
         Check("URLハッシュは安定する",
               UrlDetect.Hashed("https://a.example/x"), UrlDetect.Hashed("https://a.example/x"));
+    }
+
+    private static void TestEightyFivePoResolver()
+    {
+        Section("85po の実体URL解決");
+
+        const string html = "<meta property='og:title' content='A &amp; B'>" +
+            "<script>var p={" +
+            "video_url:'https://cdn.example/1_480p.mp4/?t=a',video_url_text:'480p'," +
+            "video_alt_url:'https://cdn.example/1_720p.mp4/?t=b',video_alt_url_text:'720p'," +
+            "video_alt_url2:'https://cdn.example/1_1080p.mp4/?t=c',video_alt_url2_text:'1080p'" +
+            "};</script>";
+
+        var best = EightyFivePoResolver.Extract(html, "best");
+        Check("85po は最高画質を選ぶ", best?.Height, 1080);
+        Check("85po のタイトルを復号", best?.Title, "A & B");
+        Check("85po の 720p 上限", EightyFivePoResolver.Extract(html, "720")?.Height, 720);
+        Check("85po の 480p 上限", EightyFivePoResolver.Extract(html, "480")?.Height, 480);
+        Check("85po の動画が無ければ null",
+              EightyFivePoResolver.Extract("<html></html>", "best"), null);
+
+        const string links = "<meta property='og:title' content='Link &amp; title'>" +
+            "<a href='/ja/get_file/3/token/1000/1/1.mp4/?download=true'>480p</a>" +
+            "<a href='/ja/get_file/3/token/1000/1/1_720p.mp4/?download=true'>720p</a>";
+        var fromLinks = EightyFivePoResolver.Extract(links, "best",
+            "https://www.85po.com/ja/v/1/example/");
+        Check("85po のダウンロードリンクから画質を選ぶ", fromLinks?.Height, 720);
+        Check("85po の相対リンクを解決", fromLinks?.MediaUrl,
+              "https://www.85po.com/ja/get_file/3/token/1000/1/1_720p.mp4/?download=true");
+        Check("85po の480pリンク", EightyFivePoResolver.Extract(links, "480",
+            "https://www.85po.com/ja/v/1/example/")?.Height, 480);
+        Check("85po の二重引用符付きスクリプト",
+            EightyFivePoResolver.Extract("<script>\"video_url\":\"https://cdn.example/1_720p.mp4\"</script>",
+                "best")?.Height, 720);
+
+        using var client = new HttpClient(new MonsnodeTestHandler(request =>
+        {
+            Check("85po ページの Referer", request.Headers.Referrer?.AbsoluteUri,
+                  "https://www.85po.com/");
+            return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent(html),
+            };
+        }));
+        var resolved = EightyFivePoResolver.ResolveAsync(
+            client, "https://www.85po.com/ja/video/1/sample/", "720",
+            new SettingsData { Retries = 0 }, CancellationToken.None).GetAwaiter().GetResult();
+        Check("85po の解決結果", resolved.MediaUrl,
+              "https://cdn.example/1_720p.mp4/?t=b");
     }
 
     /// <summary>

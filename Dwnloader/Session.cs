@@ -1153,7 +1153,16 @@ public sealed class Session : IDisposable
         // 知らない種別は PDF 扱いに倒す。中途半端な値でメディア側へ回すと
         // 復元したカードが必ず失敗する。
         var kind = MediaKind.IsMedia(rec.Kind) ? rec.Kind : MediaKind.None;
-        var reference = new SourceRef(rec.Site, rec.Gid ?? "", rec.Url, kind);
+        var site = rec.Site;
+        var gid = rec.Gid ?? "";
+        // 新しく対応したサイトが以前は汎用 web として保存されていても、更新後の
+        // 再試行では専用処理へ入れる。URL から確定できる場合だけ置き換える。
+        if (site == "web" && UrlDetect.MatchKnownSite(rec.Url) is { } known)
+        {
+            site = known.Site;
+            gid = known.Gid;
+        }
+        var reference = new SourceRef(site, gid, rec.Url, kind);
 
         if (_byKey.ContainsKey(reference.Key)) return null;   // 記録が重複していても行は増やさない
 

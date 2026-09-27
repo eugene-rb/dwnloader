@@ -72,6 +72,8 @@ public sealed partial class MediaJob : JobBase
     private long _reportedBytes;
     private string _path = "";
     private string _title = "";
+    private string _resolvedTitle = "";
+    private string _outputTemplate = OutputTemplate;
     private readonly List<string> _errorLines = new();
 
     /// <summary>
@@ -108,6 +110,9 @@ public sealed partial class MediaJob : JobBase
             SetStatus(JobStatus.Fetching);
 
             if (Reference.Site == "monsnode" && !await TryResolveMonsnodeAsync().ConfigureAwait(false))
+                return;
+
+            if (Reference.Site == "85po" && !await TryResolve85PoAsync().ConfigureAwait(false))
                 return;
 
             // 偽装が要るサイトなのに使えない yt-dlp だと 403 で終わる。
@@ -216,6 +221,43 @@ public sealed partial class MediaJob : JobBase
         }
     }
 
+    /// <summary>85po の現行ページを、トークン付き MP4 URL へ解決する。</summary>
+    private async Task<bool> TryResolve85PoAsync()
+    {
+        try
+        {
+            // 音声化するときは同じ音声を持つ最小の動画で十分。
+            var quality = Reference.Kind == MediaKind.Audio ? "480" : Settings.VideoQuality;
+            var resolved = await EightyFivePoResolver
+                .ResolveAsync(_client, Reference.Url, quality, Settings, Token)
+                .ConfigureAwait(false);
+            _targetUrl = resolved.MediaUrl;
+            _resolvedTitle = resolved.Title;
+
+            var suffix = $" [85po] (85po-{Reference.Gid})";
+            int maxLen = Math.Max(40, Settings.FilenameMaxLen);
+            int titleLen = Math.Max(12, maxLen - suffix.Length - 4);
+            var title = Util.SanitizeFilename(
+                _resolvedTitle, titleLen, $"85po-{Reference.Gid}");
+            // yt-dlp の出力テンプレートでは % が特殊文字なので二重にする。
+            var stem = (title + suffix).Replace("%", "%%", StringComparison.Ordinal);
+            _outputTemplate = Reference.Kind == MediaKind.Video
+                ? stem + ".mp4"
+                : stem + ".%(ext)s";
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception e) when (e is SiteException or TransientException)
+        {
+            Log("error", $"{Reference.Url}: {e.Message}");
+            Finish(false, "", e.Message);
+            return false;
+        }
+    }
+
     // ------------------------------------------------------------ 起動引数
 
     private ProcessStartInfo BuildStartInfo(YtDlp.Resolved resolved)
@@ -288,6 +330,11 @@ public sealed partial class MediaJob : JobBase
             a.Add("--impersonate");
             a.Add("chrome");
         }
+        if (Reference.Site == "85po")
+        {
+            a.Add("--referer");
+            a.Add(Reference.Url);
+        }
         a.Add("--windows-filenames");
         a.Add("--trim-filenames");
         a.Add(Math.Max(40, Settings.FilenameMaxLen).ToString(CultureInfo.InvariantCulture));
@@ -295,7 +342,7 @@ public sealed partial class MediaJob : JobBase
         a.Add("--no-overwrites");
         a.Add("--continue");
 
-        a.Add("-o"); a.Add(OutputTemplate);
+        a.Add("-o"); a.Add(_outputTemplate);
         a.Add("-P"); a.Add(outDir);
 
         // 進捗（1行1件）。数値が取れない配信でも落ちないよう、既定値付きで書く。
@@ -428,7 +475,8 @@ public sealed partial class MediaJob : JobBase
         _metaSent = true;
 
         // リストの1本目の題名を出すと、以降ずっと嘘になる
-        _title = playlistCount > 1 && playlistTitle.Length > 0 ? playlistTitle
+        _title = _resolvedTitle.Length > 0 ? _resolvedTitle
+               : playlistCount > 1 && playlistTitle.Length > 0 ? playlistTitle
                : title.Length > 0 ? title
                : Reference.Url;
 
