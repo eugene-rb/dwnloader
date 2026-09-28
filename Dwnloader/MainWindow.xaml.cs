@@ -14,6 +14,7 @@ public partial class MainWindow : Window
     private TrayIcon? _tray;
     private UpdateService? _updates;
     private bool _updateBusy;
+    private readonly CancellationTokenSource _updateChecks = new();
     private bool _quitting;
     private bool _suppressToggleEvents = true;
 
@@ -25,6 +26,7 @@ public partial class MainWindow : Window
         var appWindow = WindowInterop.GetAppWindow(this);
         appWindow.Resize(new Windows.Graphics.SizeInt32(1040, 760));
         appWindow.Closing += OnAppWindowClosing;
+        Closed += (_, _) => _updateChecks.Cancel();
 
         // タイトルバーのアイコン設定
         try
@@ -144,7 +146,7 @@ public partial class MainWindow : Window
     // ============================================================== 更新
 
     /// <summary>
-    /// 起動時に静かに確認する。見つかったときだけ「更新」ボタンを出す。
+    /// 起動後と起動中に静かに確認する。見つかったときだけ「更新」ボタンを出す。
     /// 見つからなかった場合や通信できなかった場合は何も言わない
     /// （起動のたびに更新の話を持ち出さない）。
     /// </summary>
@@ -153,24 +155,52 @@ public partial class MainWindow : Window
         if (_updates is null || !_updates.IsSupported) return;
 
         // 起動直後は復元や走査で忙しい。少し待ってから確認する。
-        await Task.Delay(TimeSpan.FromSeconds(5));
         try
         {
-            var found = await _updates.CheckAsync();
-            if (found is null) return;
+            await Task.Delay(TimeSpan.FromSeconds(5), _updateChecks.Token);
+            while (!_updateChecks.IsCancellationRequested)
+            {
+                if (!_updateBusy)
+                {
+                    try
+                    {
+                        var found = await _updates.CheckAsync();
+                        if (_updateChecks.IsCancellationRequested) return;
+                        var wasVisible = UpdateBtn.Visibility == Visibility.Visible;
+                        ShowAvailableUpdate(found);
+                        if (found is not null && !wasVisible)
+                            _session?.Log("info", $"新しい版 v{found} が公開されています。"
+                                                  + "下の「更新」から適用できます。");
+                    }
+                    catch (Exception e)
+                    {
+                        // 通信できないだけで騒がない。ログにだけ残す。
+                        _session?.Log("info", $"更新の確認をとばしました: {e.Message}");
+                    }
+                }
 
-            UpdateBtn.Content = $"v{found} に更新";
-            ToolTipService.SetToolTip(UpdateBtn,
-                $"新しい版 v{found} が公開されています（現在 v{AppInfo.Version}）");
-            UpdateBtn.Visibility = Visibility.Visible;
-            _session?.Log("info", $"新しい版 v{found} が公開されています。"
-                                  + "下の「更新」から適用できます。");
+                await Task.Delay(TimeSpan.FromMinutes(30), _updateChecks.Token);
+            }
         }
-        catch (Exception e)
+        catch (OperationCanceledException)
         {
-            // 通信できないだけで騒がない。ログにだけ残す。
-            _session?.Log("info", $"更新の確認をとばしました: {e.Message}");
+            // ウィンドウを閉じたら定期確認も終える。
         }
+    }
+
+    private void ShowAvailableUpdate(string? version)
+    {
+        if (version is null)
+        {
+            UpdateBtn.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        if (_updateBusy) return;
+        UpdateBtn.Content = $"v{version} に更新";
+        ToolTipService.SetToolTip(UpdateBtn,
+            $"新しい版 v{version} が公開されています（現在 v{AppInfo.Version}）");
+        UpdateBtn.Visibility = Visibility.Visible;
     }
 
     private async void Update_Click(object sender, RoutedEventArgs e)
@@ -430,6 +460,7 @@ public partial class MainWindow : Window
     {
         if (_session is null) return;
         var values = await SettingsWindow.ShowAsync(_session.Settings, _updates);
+        ShowAvailableUpdate(_updates?.AvailableVersion);
         if (values is not null)
         {
             _session.SaveSettings(values);
