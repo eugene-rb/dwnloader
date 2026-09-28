@@ -31,14 +31,24 @@ public sealed class TrayIcon : IDisposable
         _onToggleWatch = onToggleWatch;
         _onQuit = onQuit;
 
-        _watchItem = new MenuFlyoutItem { Text = "クリップボード監視を停止" };
-        _watchItem.Click += (_, _) => _onToggleWatch();
+        // H.NotifyIcon の既定の PopupMenu モードは Click ではなく Command を実行する。
+        _watchItem = new MenuFlyoutItem
+        {
+            Text = "クリップボード監視を停止",
+            Command = new RelayCommand(_onToggleWatch),
+        };
 
-        var showItem = new MenuFlyoutItem { Text = "ウィンドウを表示" };
-        showItem.Click += (_, _) => _onShow();
+        var showItem = new MenuFlyoutItem
+        {
+            Text = "ウィンドウを表示",
+            Command = new RelayCommand(_onShow),
+        };
 
-        var quitItem = new MenuFlyoutItem { Text = "終了" };
-        quitItem.Click += (_, _) => _onQuit();
+        var quitItem = new MenuFlyoutItem
+        {
+            Text = "終了",
+            Command = new RelayCommand(_onQuit),
+        };
 
         var menu = new MenuFlyout();
         menu.Items.Add(showItem);
