@@ -456,6 +456,18 @@ public partial class MainWindow : Window
             LogList.ScrollIntoView(LogList.Items[^1]);
     }
 
+    private void CopyLog_Click(object sender, RoutedEventArgs e)
+    {
+        if (LogList.Items.Count == 0) return;
+
+        var text = string.Join(Environment.NewLine, LogList.Items.Cast<string>());
+        var data = new Windows.ApplicationModel.DataTransfer.DataPackage();
+        data.SetText(text);
+        _session?.Clipboard.IgnoreText(text);
+        Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(data);
+        Windows.ApplicationModel.DataTransfer.Clipboard.Flush();
+    }
+
     private async void Settings_Click(object sender, RoutedEventArgs e)
     {
         if (_session is null) return;

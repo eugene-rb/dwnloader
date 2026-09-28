@@ -191,14 +191,23 @@
 
         <Grid x:Name="LogPane" Grid.Row="2" Height="150" Visibility="Collapsed" Margin="24,0,24,8">
             <Border Style="{StaticResource CardBorderStyle}">
-                <ListView x:Name="LogList" Background="Transparent" Padding="8"
-                          FontFamily="Consolas" FontSize="11">
-                    <ListView.ItemTemplate>
-                        <DataTemplate>
-                            <TextBlock Text="{Binding}" Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
-                        </DataTemplate>
-                    </ListView.ItemTemplate>
-                </ListView>
+                <Grid Padding="8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <Button Grid.Row="0" Content="すべてコピー" Click="CopyLog_Click"
+                            HorizontalAlignment="Right" Margin="0,0,0,4"/>
+                    <ListView x:Name="LogList" Grid.Row="1" Background="Transparent" Padding="0"
+                              FontFamily="Consolas" FontSize="11">
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" IsTextSelectionEnabled="True"
+                                           Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                </Grid>
             </Border>
         </Grid>
 

@@ -60,6 +60,9 @@ public sealed class ClipboardWatcher : IDisposable
 
     public bool IsEnabled => _enabled;
 
+    /// <summary>アプリ自身がコピーする文字列を監視対象から外す。</summary>
+    public void IgnoreText(string text) => _lastText = text;
+
     /// <summary>ウィンドウが出来てから呼ぶ。メッセージの受け口をそこに間借りする。</summary>
     public void Attach(Window window)
     {
