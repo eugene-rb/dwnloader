@@ -41,7 +41,8 @@ public static partial class EightyFivePoResolver
             var key = match.Groups["key"].Value;
             var url = WebUtility.HtmlDecode(match.Groups["url"].Value);
             if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)
-                || uri.Scheme is not ("http" or "https"))
+                || uri.Scheme is not ("http" or "https")
+                || !IsMp4Url(uri))
                 continue;
 
             int height = 0;
@@ -58,7 +59,8 @@ public static partial class EightyFivePoResolver
         }
 
         // 現行ページには画質別の MP4 ダウンロードリンクもある。プレーヤーの
-        // JavaScript が変わった場合は、こちらから同じ実体 URL を取得する。
+        // JavaScript が変わった場合や .php の中継 URL しか示さない場合は、
+        // こちらから実体 URL を取得する。.php を yt-dlp に渡すと安全上拒否される。
         if (candidates.Count == 0)
         {
             foreach (Match match in LinkUrl().Matches(html))
@@ -69,7 +71,7 @@ public static partial class EightyFivePoResolver
                     continue;
                 if (uri is null || uri.Scheme is not ("http" or "https")
                     || !uri.AbsolutePath.Contains("/get_file/", StringComparison.OrdinalIgnoreCase)
-                    || !uri.AbsolutePath.Contains(".mp4", StringComparison.OrdinalIgnoreCase))
+                    || !IsMp4Url(uri))
                     continue;
 
                 int height = 480;
@@ -100,6 +102,9 @@ public static partial class EightyFivePoResolver
         return new Resolved(selected.Url, title, selected.Height, pageUrl ?? "");
     }
 
+    private static bool IsMp4Url(Uri uri) =>
+        uri.AbsolutePath.TrimEnd('/').EndsWith(".mp4", StringComparison.OrdinalIgnoreCase);
+
     public static async Task<Resolved> ResolveAsync(
         HttpClient client, string pageUrl, string preferredQuality,
         SettingsData settings, CancellationToken ct)
@@ -119,6 +124,33 @@ public static partial class EightyFivePoResolver
         return Extract(page.Text(), preferredQuality, uri.AbsoluteUri)
                ?? throw new SiteException(
                    "85po のページ構造が変わったようです（動画リンクが見つかりません）");
+    }
+
+    /// <summary>
+    /// 配信先は MP4 リンクから .php へ転送することがある。yt-dlp の拡張子保護を
+    /// このサイトに限って緩める前に、転送先が実際に MP4 を返すことを確認する。
+    /// </summary>
+    public static async Task<bool> VerifyMp4Async(
+        HttpClient client, Resolved resolved, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, resolved.MediaUrl);
+        request.Headers.Referrer = new Uri(resolved.PageUrl);
+        using var response = await client.SendAsync(
+            request, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
+            throw new SiteException($"85po の動画を取得できません (HTTP {(int)response.StatusCode})");
+
+        await using var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+        var header = new byte[8];
+        int read = await stream.ReadAtLeastAsync(header, header.Length,
+            throwOnEndOfStream: false, cancellationToken: ct).ConfigureAwait(false);
+        if (read < header.Length || header[4] != (byte)'f' || header[5] != (byte)'t'
+            || header[6] != (byte)'y' || header[7] != (byte)'p')
+            throw new SiteException("85po の動画リンクは MP4 データを返しませんでした");
+
+        // yt-dlp は転送先の拡張子を使う。.php でも中身が MP4 と確認できた
+        // この1件だけ、呼び出し側が拡張子保護の例外を指定できるようにする。
+        return response.RequestMessage?.RequestUri is { } finalUrl && !IsMp4Url(finalUrl);
     }
 
     private static Task<HttpResult> FetchPageAsync(

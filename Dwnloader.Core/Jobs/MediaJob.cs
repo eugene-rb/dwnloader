@@ -75,6 +75,7 @@ public sealed partial class MediaJob : JobBase
     private string _resolvedTitle = "";
     private string _outputTemplate = OutputTemplate;
     private string _pageReferer = "";
+    private bool _allow85PoUnsafeExt;
     private readonly List<string> _errorLines = new();
 
     /// <summary>
@@ -232,6 +233,8 @@ public sealed partial class MediaJob : JobBase
             var resolved = await EightyFivePoResolver
                 .ResolveAsync(_client, Reference.Url, quality, Settings, Token)
                 .ConfigureAwait(false);
+            _allow85PoUnsafeExt = await EightyFivePoResolver
+                .VerifyMp4Async(_client, resolved, Token).ConfigureAwait(false);
             _targetUrl = resolved.MediaUrl;
             _resolvedTitle = resolved.Title;
             _pageReferer = resolved.PageUrl;
@@ -338,6 +341,12 @@ public sealed partial class MediaJob : JobBase
             a.Add(_pageReferer);
             a.Add("--user-agent");
             a.Add(Net.UserAgent);
+            if (_allow85PoUnsafeExt)
+            {
+                // MP4 データを検証済みの URL が .php へ転送された場合だけ許可。
+                a.Add("--compat-options");
+                a.Add("allow-unsafe-ext");
+            }
         }
         a.Add("--windows-filenames");
         a.Add("--trim-filenames");

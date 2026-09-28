@@ -363,6 +363,45 @@ public static class SelfTest
             EightyFivePoResolver.Extract("<script>\"video_url\":\"https://cdn.example/1_720p.mp4\"</script>",
                 "best")?.Height, 720);
 
+        const string phpPlayer = "<script>video_url:'https://cdn.example/player.php?id=1'</script>";
+        Check("85po は PHP 中継 URL より MP4 リンクを優先",
+            EightyFivePoResolver.Extract(phpPlayer + links, "best",
+                "https://www.85po.com/ja/video/1/sample/")?.MediaUrl,
+            "https://www.85po.com/ja/get_file/3/token/1000/1/1_720p.mp4/?download=true");
+        Check("85po は PHP URL だけを動画として扱わない",
+            EightyFivePoResolver.Extract(phpPlayer, "best"), null);
+
+        using var mp4Client = new HttpClient(new MonsnodeTestHandler(request =>
+        {
+            Check("85po の MP4 確認はページを Referer にする",
+                request.Headers.Referrer?.AbsoluteUri,
+                "https://www.85po.com/ja/v/1/example/");
+            return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                RequestMessage = new HttpRequestMessage(HttpMethod.Get,
+                    "https://cdn.example/stream.php"),
+                Content = new ByteArrayContent(new byte[]
+                    { 0, 0, 0, 12, (byte)'f', (byte)'t', (byte)'y', (byte)'p' }),
+            };
+        }));
+        Check("85po の MP4 転送先に限り拡張子例外が必要",
+            EightyFivePoResolver.VerifyMp4Async(mp4Client, fromLinks!,
+                CancellationToken.None).GetAwaiter().GetResult(), true);
+
+        using var htmlClient = new HttpClient(new MonsnodeTestHandler(_ =>
+            new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent("<html>not a video</html>"),
+            }));
+        bool rejectedHtml = false;
+        try
+        {
+            EightyFivePoResolver.VerifyMp4Async(htmlClient, fromLinks!,
+                CancellationToken.None).GetAwaiter().GetResult();
+        }
+        catch (SiteException) { rejectedHtml = true; }
+        Check("85po の HTML は MP4 として扱わない", rejectedHtml, true);
+
         using var client = new HttpClient(new MonsnodeTestHandler(request =>
         {
             Check("85po ページの Referer", request.Headers.Referrer?.AbsoluteUri,
