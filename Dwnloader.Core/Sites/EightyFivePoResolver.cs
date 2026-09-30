@@ -4,6 +4,11 @@ using Dwnloader.Core;
 
 namespace Dwnloader.Sites;
 
+public sealed class VideoRemovedException : SiteException
+{
+    public VideoRemovedException() : base("85po の動画は削除されています") { }
+}
+
 /// <summary>
 /// 85po の動画ページから、現在有効なトークン付き MP4 URL を取り出す。
 /// yt-dlp の汎用抽出は旧 KVS の flashvars を前提にしており、現行ページの
@@ -29,6 +34,10 @@ public static partial class EightyFivePoResolver
 
     [GeneratedRegex(@"_(?<height>\d{3,4})p\.mp4", RegexOptions.IgnoreCase)]
     private static partial Regex HeightInUrl();
+
+    [GeneratedRegex(@"<div\b[^>]*class=[""'][^""']*\bno-player\b[^""']*[""'][^>]*>(?<message>.*?)</div>",
+        RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.CultureInvariant)]
+    private static partial Regex NoPlayer();
 
     /// <summary>HTML 内の候補から、設定した上限を超えない最高画質を選ぶ。</summary>
     public static Resolved? Extract(string html, string preferredQuality, string? pageUrl = null)
@@ -121,9 +130,16 @@ public static partial class EightyFivePoResolver
         if (page.StatusCode != 200)
             throw new SiteException($"85po のページを取得できません (HTTP {page.StatusCode})");
 
-        return Extract(page.Text(), preferredQuality, uri.AbsoluteUri)
-               ?? throw new SiteException(
-                   "85po のページ構造が変わったようです（動画リンクが見つかりません）");
+        var html = page.Text();
+        var resolved = Extract(html, preferredQuality, uri.AbsoluteUri);
+        if (resolved is not null) return resolved;
+
+        var noPlayer = NoPlayer().Match(html);
+        if (noPlayer.Success && WebUtility.HtmlDecode(noPlayer.Groups["message"].Value)
+                .Contains("削除", StringComparison.Ordinal))
+            throw new VideoRemovedException();
+
+        throw new SiteException("85po のページ構造が変わったようです（動画リンクが見つかりません）");
     }
 
     /// <summary>

@@ -255,6 +255,12 @@ public sealed partial class MediaJob : JobBase
         {
             throw;
         }
+        catch (VideoRemovedException e)
+        {
+            Log("error", $"{Reference.Url}: {e.Message}");
+            Finish(false, "", e.Message, permanent: true);
+            return false;
+        }
         catch (Exception e) when (e is SiteException or TransientException)
         {
             Log("error", $"{Reference.Url}: {e.Message}");

@@ -97,7 +97,7 @@ public static partial class UrlDetect
         new("iwara", Rx(@"^https?://(?:www\.|ecchi\.)?iwara\.tv/videos?/(?<id>[\w-]+)")),
         // 85PO は 85po.com / 85po.net を現行ミラーとして使い、旧URL には
         // 85xo.com もある。同じ動画IDなら同一サイトとして重複排除する。
-        new("85po", Rx(@"^https?://(?:www\.)?(?:85po\.com|85po\.net|85xo\.com)/(?:[a-z]{2}/)?(?:v|video)/(?<id>\d+)(?:[/?#]|$)")),
+        new("85po", Rx(@"^https?://(?:www\.)?(?:85po\.com|85po\.net|85xo\.com)/(?:[a-z]{2}/)?(?:v|video|embed)/(?<id>\d+)(?:[/?#]|$)")),
         // monsnode.com は Twitter/X の動画を素材リンク付きで索引しているサイト。
         // yt-dlp は非対応（ページに <video> も og:video も無い）なので、実体URL
         // への解決は MonsnodeResolver がページを読んで行う。ここで取る id は

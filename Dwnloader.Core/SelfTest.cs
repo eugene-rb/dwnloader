@@ -289,6 +289,12 @@ public static class SelfTest
         Check("85po.net を同一サイトとして判定", po85Net?.Site, "85po");
         Check("85po.net の動画ID", po85Net?.Gid, "34803");
 
+        var po85Embed = UrlDetect.MatchKnownSite("https://www.85po.net/ja/embed/34803");
+        Check("85po の埋め込みURLも同じ動画ID", po85Embed?.Gid, po85Net?.Gid);
+        Check("85po のURL形式が変わっても同じキー",
+            new SourceRef(po85Embed!.Site, po85Embed.Gid, "https://www.85po.net/ja/embed/34803", MediaKind.Video).Key,
+            new SourceRef(po85Net!.Site, po85Net.Gid, "https://www.85po.net/v/34803/example/", MediaKind.Video).Key);
+
         var xo85 = UrlDetect.MatchKnownSite("https://85xo.com/en/v/19778/example/");
         Check("85xo.com を旧URLとして判定", xo85?.Site, "85po");
         Check("85xo.com の動画ID", xo85?.Gid, "19778");
@@ -443,6 +449,23 @@ public static class SelfTest
               "https://www.85po.net/ja/get_file/3/token/1000/1/1_720p.mp4/?download=true");
         Check("85po 本体取得用の Referer", mirrored.PageUrl,
               "https://www.85po.net/ja/video/35829/example/");
+
+        const string removedPage = "<div class=\"player-holder\">" +
+            "<div class=\"no-player\"><span class=\"message\">ビデオが削除されました.</span></div></div>";
+        using var removedClient = new HttpClient(new MonsnodeTestHandler(_ =>
+            new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent(removedPage),
+            }));
+        bool recognizedRemoval = false;
+        try
+        {
+            EightyFivePoResolver.ResolveAsync(removedClient,
+                "https://www.85po.net/ja/video/35961/example/", "best",
+                new SettingsData { Retries = 0 }, CancellationToken.None).GetAwaiter().GetResult();
+        }
+        catch (VideoRemovedException) { recognizedRemoval = true; }
+        Check("85po の削除済み動画を判定", recognizedRemoval, true);
     }
 
     /// <summary>
@@ -651,11 +674,12 @@ public static class SelfTest
             File.WriteAllText(Path.Combine(sub, "作品A [作者] (hitomi-1234567).pdf"), "x");
             File.WriteAllText(Path.Combine(dir, "動画B [投稿者] (Youtube-dQw4w9WgXcQ).mp4"), "x");
             File.WriteAllText(Path.Combine(dir, "音声C [投稿者] (Youtube-aBcDeFgHiJk).mp3"), "x");
+            File.WriteAllText(Path.Combine(dir, "動画D [85po] (85po-34803).mp4"), "x");
             File.WriteAllText(Path.Combine(dir, "関係ないもの.txt"), "x");
 
             var index = new LibraryIndex();
             index.Rebuild(new[] { dir }, CancellationToken.None);
-            Check("索引に入った件数（txt は対象外）", index.Count, 3);
+            Check("索引に入った件数（txt は対象外）", index.Count, 4);
 
             // サブフォルダの中も見つかる
             Check("PDF を見つける",
@@ -665,6 +689,11 @@ public static class SelfTest
             Check("動画を見つける（サイト名の綴りが違っても）",
                   index.TryFind(new SourceRef("youtube", "dQw4w9WgXcQ", "u", MediaKind.Video),
                                 out _), true);
+            var po85NewUrl = "https://www.85po.net/ja/embed/34803";
+            var po85Match = UrlDetect.MatchKnownSite(po85NewUrl);
+            Check("85po の別形式URLでも保存済み動画を見つける",
+                  index.TryFind(new SourceRef(po85Match!.Site, po85Match.Gid,
+                                              po85NewUrl, MediaKind.Video), out _), true);
 
             // 同じIDでも、動画と音声は別のものとして扱う
             Check("動画を音声として探すと当たらない",
