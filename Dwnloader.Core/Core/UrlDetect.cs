@@ -110,6 +110,8 @@ public static partial class UrlDetect
         new("openrec", Rx(@"^https?://(?:www\.)?openrec\.tv/(?:live|movie)/(?<id>[\w-]+)")),
         new("mildom", Rx(@"^https?://(?:www\.)?mildom\.com/(?<id>\d+)")),
         new("spotify", Rx(@"^https?://open\.spotify\.com/(?:track|episode)/(?<id>\w+)")),
+        // Vilolo 系の共有ページ。フォルダーは追加時に中の動画へ展開する。
+        new("vilolo", Rx(@"^https?://(?:gofile\.party|cdn\.twimg-media\.com)/(?<id>[A-Za-z0-9_-]{2,80})(?:[/?#]|$)")),
     };
 
     private static Regex Rx(string pattern) =>

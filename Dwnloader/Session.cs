@@ -353,8 +353,7 @@ public sealed class Session : IDisposable
         List<SourceRef> refs;
         try
         {
-            refs = await Task.Run(() => ResolveText(request), _shutdown.Token)
-                .ConfigureAwait(false);
+            refs = await ResolveTextAsync(request, _shutdown.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -386,7 +385,8 @@ public sealed class Session : IDisposable
     /// ギャラリー側を先に見る。hitomi などは yt-dlp も一応受け取るが、
     /// このアプリでの本来の扱いは PDF 化なのでそちらを優先する。
     /// </summary>
-    private List<SourceRef> ResolveText(ResolveRequest request)
+    private async Task<List<SourceRef>> ResolveTextAsync(
+        ResolveRequest request, CancellationToken ct)
     {
         var kind = MediaKindValue;
         var black = request.UseBlacklist ? BlacklistHosts() : new HashSet<string>();
@@ -400,6 +400,23 @@ public sealed class Session : IDisposable
         foreach (var candidate in UrlDetect.FindUrls(request.Text).Distinct(StringComparer.Ordinal))
         {
             if (_shutdown.IsCancellationRequested) break;
+
+            if (ViloloResolver.Match(candidate) is not null)
+            {
+                var items = await ViloloResolver.ExpandAsync(
+                    _client, candidate, Settings.PlaylistAll, Settings, ct).ConfigureAwait(false);
+                var host = UrlDetect.HostOf(candidate);
+                foreach (var item in items)
+                {
+                    var pageUrl = item.LandingPage.Length > 0
+                        ? $"https://{host}/{item.LandingPage}"
+                        : candidate;
+                    var gid = item.Id.Length > 0 ? item.Id : UrlDetect.Hashed(item.MediaUrl);
+                    var expandedMedia = new SourceRef("vilolo", gid, pageUrl, kind);
+                    if (seen.Add(expandedMedia.Key)) refs.Add(expandedMedia);
+                }
+                continue;
+            }
 
             var gallery = SiteRegistry.Resolve(candidate);
             if (gallery is not null)

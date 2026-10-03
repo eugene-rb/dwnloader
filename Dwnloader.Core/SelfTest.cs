@@ -331,6 +331,14 @@ public static class SelfTest
         Check("ただのページは判定しない",
               UrlDetect.MatchKnownSite("https://example.com/article"), null);
 
+        var vilolo = UrlDetect.MatchKnownSite("https://gofile.party/Mol9du");
+        Check("gofile.party の共有動画を判定", vilolo?.Site, "vilolo");
+        Check("gofile.party の短縮ID", vilolo?.Gid, "Mol9du");
+        var twimgFolder = UrlDetect.MatchKnownSite("https://cdn.twimg-media.com/m2uRbA");
+        Check("twimg-media の共有フォルダーを判定", twimgFolder?.Site, "vilolo");
+        Check("共有サイトのトップページは拾わない",
+              UrlDetect.MatchKnownSite("https://gofile.party/"), null);
+
         // ハッシュは安定していること（同じURLなら毎回同じ）
         Check("URLハッシュは安定する",
               UrlDetect.Hashed("https://a.example/x"), UrlDetect.Hashed("https://a.example/x"));

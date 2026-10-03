@@ -117,6 +117,9 @@ public sealed partial class MediaJob : JobBase
             if (Reference.Site == "85po" && !await TryResolve85PoAsync().ConfigureAwait(false))
                 return;
 
+            if (Reference.Site == "vilolo" && !await TryResolveViloloAsync().ConfigureAwait(false))
+                return;
+
             // 偽装が要るサイトなのに使えない yt-dlp だと 403 で終わる。
             // 何が足りないのかは出力からは読み取れないので先に伝える。
             if (ImpersonateSites.Contains(Reference.Site) && !YtDlp.SupportsImpersonation(resolved))
@@ -269,6 +272,40 @@ public sealed partial class MediaJob : JobBase
         }
     }
 
+    /// <summary>Vilolo 系共有ページを HLS URL と元のファイル名へ解決する。</summary>
+    private async Task<bool> TryResolveViloloAsync()
+    {
+        try
+        {
+            var resolved = await ViloloResolver.ResolveAsync(
+                _client, Reference.Url, Settings, Token).ConfigureAwait(false);
+            _targetUrl = resolved.MediaUrl;
+            _resolvedTitle = resolved.Name;
+            _pageReferer = Reference.Url;
+
+            var suffix = $" [共有動画] (vilolo-{Reference.Gid})";
+            int maxLen = Math.Max(40, Settings.FilenameMaxLen);
+            int titleLen = Math.Max(12, maxLen - suffix.Length - 4);
+            var title = Util.SanitizeFilename(
+                _resolvedTitle, titleLen, $"vilolo-{Reference.Gid}");
+            var stem = (title + suffix).Replace("%", "%%", StringComparison.Ordinal);
+            _outputTemplate = Reference.Kind == MediaKind.Video
+                ? stem + ".mp4"
+                : stem + ".%(ext)s";
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception e) when (e is SiteException or TransientException)
+        {
+            Log("error", $"{Reference.Url}: {e.Message}");
+            Finish(false, "", e.Message);
+            return false;
+        }
+    }
+
     // ------------------------------------------------------------ 起動引数
 
     private ProcessStartInfo BuildStartInfo(YtDlp.Resolved resolved)
@@ -353,6 +390,13 @@ public sealed partial class MediaJob : JobBase
                 a.Add("--compat-options");
                 a.Add("allow-unsafe-ext");
             }
+        }
+        if (Reference.Site == "vilolo")
+        {
+            a.Add("--referer");
+            a.Add(_pageReferer);
+            a.Add("--user-agent");
+            a.Add(Net.UserAgent);
         }
         a.Add("--windows-filenames");
         a.Add("--trim-filenames");
