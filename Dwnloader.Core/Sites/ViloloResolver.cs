@@ -50,12 +50,16 @@ public static partial class ViloloResolver
         var root = Match(url) ?? throw new SiteException("対応していない共有URLです");
         var apiOrigin = await ApiOriginAsync(client, root, settings, ct).ConfigureAwait(false);
         var first = await GetInfoAsync(client, apiOrigin, root, settings, ct).ConfigureAwait(false);
-        if (!first.IsFolder) return new[] { first.Item };
+        if (!first.IsFolder && (!all || first.ListShortLink.Length == 0 ||
+                                first.ListShortLink == root.ShortLink))
+            return new[] { first.Item };
 
         var result = new List<Item>();
         var pending = new Queue<string>();
         var visited = new HashSet<string>(StringComparer.Ordinal);
-        pending.Enqueue(root.ShortLink);
+        // 単体動画ページにも、画面下部の一覧を指すチャンネル用IDがある。
+        // ページ自身の短縮IDで一覧APIを呼ぶと0件になるため、extraInfo.externalLinksを使う。
+        pending.Enqueue(first.IsFolder ? root.ShortLink : first.ListShortLink);
 
         while (pending.Count > 0 && result.Count < MaxItems)
         {
@@ -90,6 +94,8 @@ public static partial class ViloloResolver
             }
         }
 
+        // チャンネル一覧が一時的に空でも、開いた単体動画そのものは取得できる。
+        if (result.Count == 0 && !first.IsFolder) return new[] { first.Item };
         if (result.Count == 0) throw new SiteException("共有フォルダーに動画がありません");
         return result;
     }
@@ -105,7 +111,7 @@ public static partial class ViloloResolver
         return item.Item;
     }
 
-    private sealed record InfoItem(Item Item, string SortOrder)
+    private sealed record InfoItem(Item Item, string SortOrder, string ListShortLink)
     {
         public bool IsFolder => Item.IsFolder;
         public static implicit operator Item(InfoItem value) => value.Item;
@@ -134,7 +140,9 @@ public static partial class ViloloResolver
             Text(disk, "fileUrl", "originUrl", "m3u8Url"),
             Text(disk, "landingPage", fallback: reference.ShortLink),
             Bool(disk, "isFolder"));
-        return new InfoItem(item, Text(extra, "sortOrder", fallback: "2"));
+        return new InfoItem(item,
+            Text(extra, "sortOrder", fallback: "2"),
+            Text(extra, "externalLinks", "shortLink"));
     }
 
     private static async Task<ListPage> ListPageAsync(
