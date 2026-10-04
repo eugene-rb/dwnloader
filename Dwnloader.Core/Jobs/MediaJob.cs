@@ -36,7 +36,7 @@ public sealed partial class MediaJob : JobBase
     /// 今まで問題なく取れていたサイトの通信まで変えてしまう。
     /// </summary>
     private static readonly HashSet<string> ImpersonateSites =
-        new(StringComparer.OrdinalIgnoreCase) { "85po" };
+        new(StringComparer.OrdinalIgnoreCase) { "85po", "gofile" };
 
     // 行の種類を見分ける印。タイトルに現れない綴りを選ぶ。
     private const string ProgTag = "@@P@@";
@@ -76,6 +76,7 @@ public sealed partial class MediaJob : JobBase
     private string _outputTemplate = OutputTemplate;
     private string _pageReferer = "";
     private bool _allow85PoUnsafeExt;
+    private string _gofileToken = "";
     private readonly List<string> _errorLines = new();
 
     /// <summary>
@@ -118,6 +119,9 @@ public sealed partial class MediaJob : JobBase
                 return;
 
             if (Reference.Site == "vilolo" && !await TryResolveViloloAsync().ConfigureAwait(false))
+                return;
+
+            if (Reference.Site == "gofile" && !await TryPrepareGoFileAsync().ConfigureAwait(false))
                 return;
 
             // 偽装が要るサイトなのに使えない yt-dlp だと 403 で終わる。
@@ -306,6 +310,36 @@ public sealed partial class MediaJob : JobBase
         }
     }
 
+    /// <summary>GoFileの直接URLに必要なゲストCookieと保存名を準備する。</summary>
+    private async Task<bool> TryPrepareGoFileAsync()
+    {
+        try
+        {
+            _gofileToken = await GoFileResolver.DownloadTokenAsync(
+                _client, Settings, Token).ConfigureAwait(false);
+            _targetUrl = Reference.Url;
+            _pageReferer = "https://gofile.io/";
+            if (Uri.TryCreate(Reference.Url, UriKind.Absolute, out var uri))
+                _resolvedTitle = Uri.UnescapeDataString(uri.Segments.LastOrDefault()?.Trim('/') ?? "");
+
+            var suffix = $" [GoFile] (gofile-{Reference.Gid})";
+            int maxLen = Math.Max(40, Settings.FilenameMaxLen);
+            int titleLen = Math.Max(12, maxLen - suffix.Length - 4);
+            var title = Util.SanitizeFilename(
+                _resolvedTitle, titleLen, $"gofile-{Reference.Gid}");
+            var stem = (title + suffix).Replace("%", "%%", StringComparison.Ordinal);
+            _outputTemplate = stem + ".%(ext)s";
+            return true;
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception e) when (e is SiteException or TransientException)
+        {
+            Log("error", $"{Reference.Url}: {e.Message}");
+            Finish(false, "", e.Message);
+            return false;
+        }
+    }
+
     // ------------------------------------------------------------ 起動引数
 
     private ProcessStartInfo BuildStartInfo(YtDlp.Resolved resolved)
@@ -397,6 +431,13 @@ public sealed partial class MediaJob : JobBase
             a.Add(_pageReferer);
             a.Add("--user-agent");
             a.Add(Net.UserAgent);
+        }
+        if (Reference.Site == "gofile")
+        {
+            a.Add("--referer");
+            a.Add(_pageReferer);
+            a.Add("--add-header");
+            a.Add("Cookie:accountToken=" + _gofileToken);
         }
         a.Add("--windows-filenames");
         a.Add("--trim-filenames");

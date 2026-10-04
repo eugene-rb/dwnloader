@@ -418,6 +418,18 @@ public sealed class Session : IDisposable
                 continue;
             }
 
+            if (GoFileResolver.Match(candidate) is not null)
+            {
+                var items = await GoFileResolver.ExpandAsync(
+                    _client, candidate, Settings.PlaylistAll, Settings, ct).ConfigureAwait(false);
+                foreach (var item in items)
+                {
+                    var gofileMedia = new SourceRef("gofile", item.Id, item.Link, kind);
+                    if (seen.Add(gofileMedia.Key)) refs.Add(gofileMedia);
+                }
+                continue;
+            }
+
             var gallery = SiteRegistry.Resolve(candidate);
             if (gallery is not null)
             {

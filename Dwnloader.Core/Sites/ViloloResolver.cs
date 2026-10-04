@@ -18,6 +18,7 @@ public static partial class ViloloResolver
     private static readonly HashSet<string> KnownHosts = new(StringComparer.OrdinalIgnoreCase)
     {
         "gofile.party",
+        "gofile.run",
         "cdn.twimg-media.com",
     };
 

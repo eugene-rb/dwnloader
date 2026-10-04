@@ -338,6 +338,18 @@ public static class SelfTest
         Check("twimg-media の共有フォルダーを判定", twimgFolder?.Site, "vilolo");
         Check("共有サイトのトップページは拾わない",
               UrlDetect.MatchKnownSite("https://gofile.party/"), null);
+        var gofileRun = UrlDetect.MatchKnownSite("https://gofile.run/XvSj5m");
+        Check("gofile.run の共有フォルダーを判定", gofileRun?.Site, "vilolo");
+        Check("gofile.run の短縮ID", gofileRun?.Gid, "XvSj5m");
+
+        var gofile = UrlDetect.MatchKnownSite("https://gofile.io/d/325rV8gZ");
+        Check("gofile.io の共有フォルダーを判定", gofile?.Site, "gofile");
+        Check("gofile.io の共有コード", gofile?.Gid, "325rV8gZ");
+        Check("gofile.io のトップページは拾わない",
+              UrlDetect.MatchKnownSite("https://gofile.io/"), null);
+        Check("GoFile Webトークン生成",
+              GoFileResolver.WebsiteTokenForTest("guest-token", 1728000000),
+              "e1369b71d336b05afe9d514202c8c88580954f60dfdc193765bc4bcc2e3eaad3");
 
         // ハッシュは安定していること（同じURLなら毎回同じ）
         Check("URLハッシュは安定する",
