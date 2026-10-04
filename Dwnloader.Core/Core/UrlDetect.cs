@@ -111,7 +111,7 @@ public static partial class UrlDetect
         new("mildom", Rx(@"^https?://(?:www\.)?mildom\.com/(?<id>\d+)")),
         new("spotify", Rx(@"^https?://open\.spotify\.com/(?:track|episode)/(?<id>\w+)")),
         // Vilolo 系の共有ページ。フォルダーは追加時に中の動画へ展開する。
-        new("vilolo", Rx(@"^https?://(?:gofile\.(?:party|run)|cdn\.twimg-media\.com)/(?<id>[A-Za-z0-9_-]{2,80})(?:[/?#]|$)")),
+        new("vilolo", Rx(@"^https?://(?:gofile\.(?:party|run|host)|cdn\.twimg-media\.com)/(?<id>[A-Za-z0-9_-]{2,80})(?:[/?#]|$)")),
         new("gofile", Rx(@"^https?://(?:www\.)?gofile\.io/d/(?<id>[A-Za-z0-9-]{4,80})(?:[/?#]|$)")),
     };
 

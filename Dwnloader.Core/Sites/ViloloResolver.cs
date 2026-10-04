@@ -19,6 +19,7 @@ public static partial class ViloloResolver
     {
         "gofile.party",
         "gofile.run",
+        "gofile.host",
         "cdn.twimg-media.com",
     };
 

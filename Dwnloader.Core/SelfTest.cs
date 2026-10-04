@@ -341,6 +341,9 @@ public static class SelfTest
         var gofileRun = UrlDetect.MatchKnownSite("https://gofile.run/XvSj5m");
         Check("gofile.run の共有フォルダーを判定", gofileRun?.Site, "vilolo");
         Check("gofile.run の短縮ID", gofileRun?.Gid, "XvSj5m");
+        var gofileHost = UrlDetect.MatchKnownSite("https://gofile.host/a9Wx5u");
+        Check("gofile.host の共有動画を判定", gofileHost?.Site, "vilolo");
+        Check("gofile.host の短縮ID", gofileHost?.Gid, "a9Wx5u");
 
         var gofile = UrlDetect.MatchKnownSite("https://gofile.io/d/325rV8gZ");
         Check("gofile.io の共有フォルダーを判定", gofile?.Site, "gofile");
