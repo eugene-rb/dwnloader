@@ -344,6 +344,17 @@ public static class SelfTest
         var gofileHost = UrlDetect.MatchKnownSite("https://gofile.host/a9Wx5u");
         Check("gofile.host の共有動画を判定", gofileHost?.Site, "vilolo");
         Check("gofile.host の短縮ID", gofileHost?.Gid, "a9Wx5u");
+        var gofileBid = UrlDetect.MatchKnownSite("https://gofile.bid/d/So6aPi");
+        Check("gofile.bid の共有動画を判定", gofileBid?.Site, "vilolo");
+        Check("gofile.bid の短縮ID", gofileBid?.Gid, "So6aPi");
+        Check("gofile.bid の /d/ 形式を展開器でも判定",
+              ViloloResolver.Match("https://gofile.bid/d/So6aPi")?.ShortLink, "So6aPi");
+        var twimgImage = UrlDetect.MatchKnownSite("https://video2.twimg-image.com/TBx8VH");
+        Check("video2.twimg-image.com の共有動画を判定", twimgImage?.Site, "vilolo");
+        Check("video2.twimg-image.com の短縮ID", twimgImage?.Gid, "TBx8VH");
+        Check("video2.twimg-image.com を展開器でも判定",
+              ViloloResolver.Match("https://video2.twimg-image.com/TBx8VH")?.ShortLink,
+              "TBx8VH");
 
         var gofile = UrlDetect.MatchKnownSite("https://gofile.io/d/325rV8gZ");
         Check("gofile.io の共有フォルダーを判定", gofile?.Site, "gofile");

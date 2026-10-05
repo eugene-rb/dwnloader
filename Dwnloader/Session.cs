@@ -409,7 +409,9 @@ public sealed class Session : IDisposable
                 foreach (var item in items)
                 {
                     var pageUrl = item.LandingPage.Length > 0
-                        ? $"https://{host}/{item.LandingPage}"
+                        ? item.LandingPage.StartsWith('/')
+                            ? $"https://{host}{item.LandingPage}"
+                            : $"https://{host}/{item.LandingPage}"
                         : candidate;
                     var gid = item.Id.Length > 0 ? item.Id : UrlDetect.Hashed(item.MediaUrl);
                     var expandedMedia = new SourceRef("vilolo", gid, pageUrl, kind);

@@ -17,10 +17,12 @@ public static partial class ViloloResolver
 
     private static readonly HashSet<string> KnownHosts = new(StringComparer.OrdinalIgnoreCase)
     {
+        "gofile.bid",
         "gofile.party",
         "gofile.run",
         "gofile.host",
         "cdn.twimg-media.com",
+        "video2.twimg-image.com",
     };
 
     private static readonly ConcurrentDictionary<string, string> ApiOrigins =
@@ -36,10 +38,13 @@ public static partial class ViloloResolver
         if (!Uri.TryCreate((url ?? "").Trim(), UriKind.Absolute, out var uri)) return null;
         if (uri.Scheme is not ("http" or "https") || !KnownHosts.Contains(uri.Host)) return null;
 
-        var shortLink = uri.AbsolutePath.Trim('/');
+        var path = uri.AbsolutePath.Trim('/');
+        var shortLink = path.StartsWith("d/", StringComparison.OrdinalIgnoreCase)
+            ? path[2..]
+            : path;
         if (!ShortLinkRegex().IsMatch(shortLink)) return null;
         return new ShareRef(uri.Host.ToLowerInvariant(), shortLink,
-                            $"https://{uri.Host.ToLowerInvariant()}/{shortLink}");
+                            $"https://{uri.Host.ToLowerInvariant()}{uri.AbsolutePath}");
     }
 
     /// <summary>
@@ -53,7 +58,8 @@ public static partial class ViloloResolver
         var apiOrigin = await ApiOriginAsync(client, root, settings, ct).ConfigureAwait(false);
         var first = await GetInfoAsync(client, apiOrigin, root, settings, ct).ConfigureAwait(false);
         if (!first.IsFolder && (!all || first.ListShortLink.Length == 0 ||
-                                first.ListShortLink == root.ShortLink))
+                                first.ListShortLink == root.ShortLink &&
+                                root.Host != "gofile.bid"))
             return new[] { first.Item };
 
         var result = new List<Item>();
@@ -186,6 +192,16 @@ public static partial class ViloloResolver
     {
         if (ApiOrigins.TryGetValue(reference.Host, out var cached)) return cached;
 
+        // gofile.bid's current frontend proxies the same API through its own origin.
+        // Keeping this endpoint host-local also avoids depending on a release-specific
+        // upstream API hostname embedded in minified JavaScript.
+        if (reference.Host == "gofile.bid")
+        {
+            var localApi = $"https://{reference.Host}/api.php";
+            ApiOrigins[reference.Host] = localApi;
+            return localApi;
+        }
+
         // 配信先はリリースごとに変わり得るため、ページが読み込む JS から取得する。
         var page = await GetTextAsync(client, reference.PageUrl, settings, ct).ConfigureAwait(false);
         var script = ModuleScriptRegex().Match(page).Groups["src"].Value;
@@ -241,6 +257,8 @@ public static partial class ViloloResolver
     {
         var parts = query.Select(x =>
             $"{Uri.EscapeDataString(x.Key)}={Uri.EscapeDataString(x.Value)}");
+        if (origin.EndsWith("/api.php", StringComparison.OrdinalIgnoreCase))
+            return $"{origin}?endpoint={Uri.EscapeDataString(path)}&{string.Join("&", parts)}";
         return $"{origin.TrimEnd('/')}/app-api{path}?{string.Join("&", parts)}";
     }
 
