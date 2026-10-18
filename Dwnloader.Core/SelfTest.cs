@@ -355,6 +355,12 @@ public static class SelfTest
         Check("video2.twimg-image.com を展開器でも判定",
               ViloloResolver.Match("https://video2.twimg-image.com/TBx8VH")?.ShortLink,
               "TBx8VH");
+        var twimgx = UrlDetect.MatchKnownSite("https://video.twimgx.com/h9JRT7");
+        Check("video.twimgx.com の共有動画を判定", twimgx?.Site, "vilolo");
+        Check("video.twimgx.com の短縮ID", twimgx?.Gid, "h9JRT7");
+        Check("video.twimgx.com を展開器でも判定",
+              ViloloResolver.Match("https://video.twimgx.com/h9JRT7")?.ShortLink,
+              "h9JRT7");
 
         var gofile = UrlDetect.MatchKnownSite("https://gofile.io/d/325rV8gZ");
         Check("gofile.io の共有フォルダーを判定", gofile?.Site, "gofile");

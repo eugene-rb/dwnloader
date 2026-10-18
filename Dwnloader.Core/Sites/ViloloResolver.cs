@@ -23,6 +23,7 @@ public static partial class ViloloResolver
         "gofile.host",
         "cdn.twimg-media.com",
         "video2.twimg-image.com",
+        "video.twimgx.com",
     };
 
     private static readonly ConcurrentDictionary<string, string> ApiOrigins =
