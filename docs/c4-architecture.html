@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Dwnldr — C4 Architecture</title>
+  <style>
+    :root {
+      --bg: #07100f;
+      --surface: #0c1816;
+      --surface-2: #11211e;
+      --line: #28403a;
+      --text: #edf8f3;
+      --muted: #9bb4ac;
+      --mint: #67e8b7;
+      --mint-2: #1fbf8f;
+      --cyan: #67d5e8;
+      --amber: #f4bd67;
+      --coral: #fa8a73;
+      --violet: #a99af2;
+      --shadow: 0 18px 50px rgba(0, 0, 0, .28);
+      --radius: 18px;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 15% 5%, rgba(31,191,143,.13), transparent 28rem),
+        radial-gradient(circle at 90% 18%, rgba(103,213,232,.08), transparent 25rem),
+        var(--bg);
+      font-family: Inter, "Noto Sans JP", "Yu Gothic UI", system-ui, sans-serif;
+      line-height: 1.65;
+    }
+    a { color: inherit; }
+    .shell { width: min(1240px, calc(100% - 40px)); margin: 0 auto; }
+    .topbar {
+      position: sticky; top: 0; z-index: 20;
+      border-bottom: 1px solid rgba(103,232,183,.14);
+      background: rgba(7,16,15,.82); backdrop-filter: blur(18px);
+    }
+    .topbar .shell { min-height: 62px; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+    .brand { display: flex; align-items: center; gap: 11px; font-weight: 760; letter-spacing: -.02em; }
+    .mark { width: 28px; height: 28px; border-radius: 9px; background: linear-gradient(135deg, var(--mint), var(--mint-2)); box-shadow: 0 0 28px rgba(103,232,183,.28); position: relative; }
+    .mark::after { content: "↓"; position: absolute; inset: 0; display: grid; place-items: center; color: #04251b; font-weight: 900; }
+    nav { display: flex; gap: 4px; overflow-x: auto; }
+    nav a { color: var(--muted); text-decoration: none; padding: 8px 11px; border-radius: 9px; font-size: 13px; white-space: nowrap; }
+    nav a:hover { color: var(--text); background: var(--surface-2); }
+    header { padding: 86px 0 52px; }
+    .eyebrow { color: var(--mint); text-transform: uppercase; font-size: 12px; letter-spacing: .18em; font-weight: 800; }
+    h1 { font-size: clamp(42px, 7vw, 82px); line-height: 1.02; margin: 18px 0 22px; letter-spacing: -.055em; max-width: 970px; }
+    h1 span { color: var(--mint); }
+    .lede { max-width: 780px; color: #bed0ca; font-size: clamp(16px, 2vw, 20px); }
+    .meta-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 30px; }
+    .pill { padding: 7px 12px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); background: rgba(17,33,30,.72); font-size: 12px; }
+    main { padding-bottom: 100px; }
+    section { scroll-margin-top: 78px; margin-top: 66px; }
+    .section-head { display: grid; grid-template-columns: minmax(180px, .55fr) 1.45fr; gap: 36px; align-items: end; margin-bottom: 24px; }
+    .kicker { color: var(--mint); font-weight: 800; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; }
+    h2 { font-size: clamp(28px, 4vw, 44px); letter-spacing: -.04em; line-height: 1.08; margin: 6px 0 0; }
+    .section-head p { margin: 0; color: var(--muted); max-width: 680px; }
+    .panel { border: 1px solid var(--line); border-radius: var(--radius); background: linear-gradient(155deg, rgba(17,33,30,.96), rgba(9,19,17,.97)); box-shadow: var(--shadow); overflow: hidden; }
+    .panel-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 20px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+    .dots { display: flex; gap: 6px; }
+    .dots i { display: block; width: 7px; height: 7px; border-radius: 50%; background: var(--line); }
+    .diagram { padding: 34px; overflow-x: auto; }
+    .legend { display: flex; flex-wrap: wrap; gap: 16px; }
+    .legend span::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 7px; background: var(--mint); }
+    .legend .ext::before { background: transparent; border: 1px solid var(--muted); }
+    .legend .store::before { background: var(--amber); }
+    .legend .process::before { background: var(--violet); }
+
+    /* C4 shared */
+    .box { border: 1px solid #355049; border-radius: 14px; background: #11211e; padding: 17px; min-width: 170px; position: relative; }
+    .box strong { display: block; font-size: 15px; line-height: 1.25; }
+    .box small { display: block; color: var(--mint); margin: 4px 0 9px; font: 700 10px/1.2 ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: .05em; text-transform: uppercase; }
+    .box p { color: var(--muted); font-size: 12px; line-height: 1.45; margin: 0; }
+    .box.external { background: transparent; border-style: dashed; }
+    .box.store { border-color: rgba(244,189,103,.48); }
+    .box.process { border-color: rgba(169,154,242,.55); }
+    .box.ui { border-color: rgba(103,213,232,.55); }
+    .arrow-label { color: var(--muted); font: 600 10px/1.35 ui-monospace, SFMono-Regular, Consolas, monospace; text-align: center; }
+    .arrow { display: grid; place-items: center; color: var(--mint); font-size: 25px; line-height: 1; min-width: 45px; }
+    .arrow.vertical { min-height: 50px; }
+
+    /* Context */
+    .context-grid { min-width: 820px; display: grid; grid-template-columns: 190px 70px minmax(260px, 1fr) 70px 210px; grid-template-rows: auto 62px auto; align-items: center; gap: 12px; }
+    .context-grid .user { grid-column: 1; grid-row: 1; }
+    .context-grid .to-system { grid-column: 2; grid-row: 1; }
+    .context-grid .system { grid-column: 3; grid-row: 1 / span 3; padding: 26px; border: 1px solid var(--mint-2); box-shadow: inset 0 0 40px rgba(31,191,143,.06); }
+    .context-grid .system strong { font-size: 22px; }
+    .context-grid .to-web { grid-column: 4; grid-row: 1; }
+    .context-grid .sites { grid-column: 5; grid-row: 1; }
+    .context-grid .os { grid-column: 1; grid-row: 3; }
+    .context-grid .from-os { grid-column: 2; grid-row: 3; }
+    .context-grid .to-release { grid-column: 4; grid-row: 3; }
+    .context-grid .release { grid-column: 5; grid-row: 3; }
+
+    /* Containers */
+    .container-map { min-width: 980px; display: grid; grid-template-columns: 185px 56px 1fr 56px 205px; align-items: center; gap: 12px; }
+    .container-boundary { border: 1px solid rgba(103,232,183,.37); border-radius: 18px; padding: 20px; display: grid; grid-template-columns: 1fr 55px 1fr; grid-template-rows: auto 52px auto; gap: 10px; background: rgba(4,18,14,.45); }
+    .boundary-label { grid-column: 1 / -1; color: var(--mint); font: 700 10px ui-monospace, monospace; letter-spacing: .09em; text-transform: uppercase; }
+    .winui { grid-column: 1; grid-row: 2 / 4; }
+    .ui-core-arrow { grid-column: 2; grid-row: 2 / 4; }
+    .core { grid-column: 3; grid-row: 2; }
+    .core-data-arrow { grid-column: 3; grid-row: 3; }
+    .data { grid-column: 3; grid-row: 4; }
+    .right-stack, .left-stack { display: grid; gap: 14px; }
+
+    /* Components */
+    .tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+    .tab { appearance: none; border: 1px solid var(--line); background: transparent; color: var(--muted); padding: 8px 12px; border-radius: 999px; cursor: pointer; font: inherit; font-size: 12px; }
+    .tab[aria-selected="true"] { color: #05261c; background: var(--mint); border-color: var(--mint); font-weight: 800; }
+    .component-stage { min-width: 930px; }
+    .component-grid { display: grid; grid-template-columns: 1.05fr 58px 1.6fr 58px 1fr; gap: 12px; align-items: stretch; }
+    .stack { display: grid; gap: 11px; align-content: start; }
+    .stack-title { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .12em; margin-bottom: 2px; }
+    .flow-arrow { display: grid; place-items: center; color: var(--mint); font-size: 26px; }
+    .component-grid .box { transition: opacity .2s, transform .2s, border-color .2s; }
+    .component-grid[data-focus="input"] .box:not([data-group="input"]),
+    .component-grid[data-focus="gallery"] .box:not([data-group="gallery"]),
+    .component-grid[data-focus="media"] .box:not([data-group="media"]),
+    .component-grid[data-focus="state"] .box:not([data-group="state"]) { opacity: .22; }
+    .component-grid[data-focus]:not([data-focus="all"]) .box:hover { opacity: 1; transform: translateY(-2px); }
+    .dual[data-group]::after { content: "shared"; position: absolute; top: 9px; right: 10px; color: var(--amber); font: 700 8px ui-monospace, monospace; text-transform: uppercase; }
+
+    /* Runtime */
+    .runtime { display: grid; grid-template-columns: repeat(6, 1fr); gap: 9px; min-width: 900px; position: relative; }
+    .step { border-top: 2px solid var(--mint-2); padding: 14px 12px 10px; background: rgba(17,33,30,.62); border-radius: 0 0 11px 11px; }
+    .step b { display: block; color: var(--mint); font-size: 11px; margin-bottom: 7px; }
+    .step strong { font-size: 13px; }
+    .step p { color: var(--muted); font-size: 11px; line-height: 1.45; margin: 6px 0 0; }
+
+    .facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    .fact { padding: 22px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+    .fact .num { color: var(--mint); font-size: 28px; font-weight: 820; letter-spacing: -.04em; }
+    .fact h3 { font-size: 15px; margin: 6px 0; }
+    .fact p { color: var(--muted); font-size: 12px; margin: 0; }
+    .decision-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+    .decision { padding: 22px; border-left: 3px solid var(--mint-2); background: var(--surface); border-radius: 4px 14px 14px 4px; }
+    .decision h3 { font-size: 15px; margin: 0 0 7px; }
+    .decision p { color: var(--muted); font-size: 13px; margin: 0; }
+    .source-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+    .source { background: var(--surface); padding: 15px 18px; }
+    .source code { color: var(--mint); font-size: 12px; }
+    .source span { color: var(--muted); display: block; font-size: 11px; margin-top: 4px; }
+    footer { color: var(--muted); border-top: 1px solid var(--line); padding: 28px 0 45px; font-size: 12px; }
+    .print-note { display: none; }
+    @media (max-width: 760px) {
+      .shell { width: min(100% - 24px, 1240px); }
+      nav { display: none; }
+      header { padding-top: 58px; }
+      .section-head { grid-template-columns: 1fr; gap: 14px; }
+      .diagram { padding: 20px; }
+      .facts, .decision-grid, .source-list { grid-template-columns: 1fr; }
+    }
+    @media print {
+      :root { --bg: #fff; --surface: #fff; --surface-2: #f2f6f4; --line: #c7d3cf; --text: #14211d; --muted: #53645e; }
+      body { background: #fff; }
+      .topbar { position: static; background: #fff; }
+      nav, .tabs { display: none; }
+      .panel { box-shadow: none; break-inside: avoid; }
+      section { break-before: page; }
+      header { padding-top: 45px; }
+      .print-note { display: block; }
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="shell">
+      <div class="brand"><span class="mark" aria-hidden="true"></span>Dwnldr <span style="color:var(--muted);font-weight:500">/ Architecture</span></div>
+      <nav aria-label="ページ内ナビゲーション">
+        <a href="#context">Context</a><a href="#container">Container</a><a href="#component">Component</a><a href="#runtime">Runtime</a><a href="#decisions">Decisions</a>
+      </nav>
+    </div>
+  </div>
+
+  <header class="shell">
+    <div class="eyebrow">Software architecture · C4 model</div>
+    <h1>コピーした URL を、<span>保存可能な作品</span>へ。</h1>
+    <p class="lede">Dwnldr は Windows 上で常駐し、ギャラリーを PDF に、動画・音声をメディアファイルに変換するデスクトップアプリです。この資料は実装を基準に、システムの境界・責務・主要なデータフローを 3 段階で表します。</p>
+    <div class="meta-row">
+      <span class="pill">C4 / Context · Container · Component</span>
+      <span class="pill">.NET 8 · WinUI 3</span>
+      <span class="pill">Architecture snapshot · 2026-10-10</span>
+      <span class="pill">Repository version · 2.5.21</span>
+    </div>
+  </header>
+
+  <main class="shell">
+    <section id="context">
+      <div class="section-head">
+        <div><div class="kicker">Level 1</div><h2>System context</h2></div>
+        <p>利用者は URL の貼り付けまたはクリップボード監視で Dwnldr を操作します。アプリは対象サイトと更新配布元へアクセスし、Windows のファイルシステムへ成果物と状態を保存します。</p>
+      </div>
+      <div class="panel">
+        <div class="panel-bar"><span>システム境界と外部アクター</span><div class="legend"><span>Dwnldr</span><span class="ext">外部</span></div></div>
+        <div class="diagram">
+          <div class="context-grid">
+            <div class="box external user"><strong>利用者</strong><small>Person</small><p>URL を追加し、キュー・進捗・設定を操作する。</p></div>
+            <div class="arrow to-system"><div><div>→</div><div class="arrow-label">操作 / URL</div></div></div>
+            <div class="box system"><strong>Dwnldr</strong><small>Software system</small><p>Web 上のギャラリー、動画、音声を取得し、PDF またはメディアファイルとして整理・保存する Windows 常駐アプリ。重複防止、再試行、並列実行、自動更新を担う。</p></div>
+            <div class="arrow to-web"><div><div>⇄</div><div class="arrow-label">HTTPS / Cookie</div></div></div>
+            <div class="box external sites"><strong>コンテンツ配信サイト</strong><small>External systems</small><p>Hitomi / Momonga / Pixiv / GoFile / 85po / Monsnode / yt-dlp 対応サイト。</p></div>
+            <div class="box external os"><strong>Windows</strong><small>OS &amp; filesystem</small><p>クリップボード、通知領域、保存先、AppData、プロセス実行。</p></div>
+            <div class="arrow from-os"><div><div>⇄</div><div class="arrow-label">監視 / 保存</div></div></div>
+            <div class="arrow to-release"><div><div>⇄</div><div class="arrow-label">更新確認</div></div></div>
+            <div class="box external release"><strong>GitHub Releases</strong><small>Update source</small><p>Velopack のリリース情報と更新パッケージを配布する。</p></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="container">
+      <div class="section-head">
+        <div><div class="kicker">Level 2</div><h2>Containers</h2></div>
+        <p>配布上はひとつのデスクトップ製品ですが、コードは UI 実行ファイルと Core ライブラリに分かれます。Core がサイト解析・ジョブ・変換を担い、UI は状態のオーケストレーションと表示に集中します。</p>
+      </div>
+      <div class="panel">
+        <div class="panel-bar"><span>Dwnldr の実行・保存コンテナ</span><div class="legend"><span>アプリ内</span><span class="store">データ</span><span class="ext">外部</span></div></div>
+        <div class="diagram">
+          <div class="container-map">
+            <div class="left-stack">
+              <div class="box external"><strong>利用者</strong><small>Person</small><p>WinUI 画面、トレイ、クリップボードを通じて操作。</p></div>
+              <div class="box external"><strong>Windows shell</strong><small>Platform</small><p>Clipboard / Tray / WebView2 / File system。</p></div>
+            </div>
+            <div class="arrow">⇄</div>
+            <div class="container-boundary">
+              <div class="boundary-label">Software system · Dwnldr</div>
+              <div class="box ui winui"><strong>Desktop UI</strong><small>Dwnldr.exe · C# / WinUI 3</small><p>MainWindow、SettingsWindow、LoginWindow、TrayIcon、ClipboardWatcher。Session が UI 状態とユースケースを調停する。</p></div>
+              <div class="arrow ui-core-arrow">⇄</div>
+              <div class="box core"><strong>Download Core</strong><small>Dwnloader.Core.dll · .NET 8</small><p>URL 判定、サイトアダプター、ジョブ制御、HTTP、画像変換、PDF 生成、yt-dlp 起動。</p></div>
+              <div class="arrow vertical core-data-arrow">↕</div>
+              <div class="box store data"><strong>Local data &amp; outputs</strong><small>JSON / DPAPI / files</small><p>settings・history・queue・accounts、PDF、動画、音声、ページキャッシュ。</p></div>
+            </div>
+            <div class="arrow">⇄</div>
+            <div class="right-stack">
+              <div class="box external"><strong>Web sites</strong><small>HTTPS</small><p>HTML / API / 画像 / メディアを取得。</p></div>
+              <div class="box external process"><strong>yt-dlp + ffmpeg</strong><small>Child processes</small><p>汎用抽出、ダウンロード、結合、音声変換。</p></div>
+              <div class="box external"><strong>GitHub Releases</strong><small>Velopack</small><p>更新検出、取得、再起動適用。</p></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="component">
+      <div class="section-head">
+        <div><div class="kicker">Level 3</div><h2>Core components</h2></div>
+        <p>Session を入口に、入力解決・ギャラリー・メディア・状態管理の 4 つの関心へ分かれます。下のフィルターで各経路を強調できます。</p>
+      </div>
+      <div class="panel">
+        <div class="panel-bar">
+          <div class="tabs" role="tablist" aria-label="コンポーネント経路フィルター">
+            <button class="tab" role="tab" aria-selected="true" data-focus="all">すべて</button>
+            <button class="tab" role="tab" aria-selected="false" data-focus="input">入力解決</button>
+            <button class="tab" role="tab" aria-selected="false" data-focus="gallery">ギャラリー</button>
+            <button class="tab" role="tab" aria-selected="false" data-focus="media">メディア</button>
+            <button class="tab" role="tab" aria-selected="false" data-focus="state">状態管理</button>
+          </div>
+          <span>矢印は主要な呼び出し方向</span>
+        </div>
+        <div class="diagram component-stage">
+          <div class="component-grid" data-focus="all">
+            <div class="stack">
+              <div class="stack-title">Presentation &amp; orchestration</div>
+              <div class="box ui" data-group="input"><strong>Window / Tray / Clipboard</strong><small>WinUI components</small><p>利用者入力と OS イベントを受け、Session へ渡す。</p></div>
+              <div class="box dual" data-group="state"><strong>Session</strong><small>Application service</small><p>キュー、EntryVm、通知、進捗集約、再試行、保存を統括する。</p></div>
+              <div class="box" data-group="state"><strong>UpdateService</strong><small>Application service</small><p>Velopack を介して更新を確認・取得・適用する。</p></div>
+            </div>
+            <div class="flow-arrow">→</div>
+            <div class="stack">
+              <div class="stack-title">Dwnloader.Core</div>
+              <div class="box" data-group="input"><strong>UrlDetect + Resolvers</strong><small>Input resolution</small><p>URL 抽出、既知サイト判定、Vilolo / GoFile 等の展開を行う。</p></div>
+              <div class="box" data-group="gallery"><strong>SiteRegistry + SiteAdapter</strong><small>Gallery abstraction</small><p>Hitomi / Momonga / Pixiv の URL と作品メタデータを統一モデルへ変換。</p></div>
+              <div class="box process" data-group="gallery"><strong>GalleryJob</strong><small>Job</small><p>ページを並列取得し、キャッシュ利用、JPEG 正規化、PDF 構築を指揮する。</p></div>
+              <div class="box process" data-group="media"><strong>MediaJob</strong><small>Job</small><p>URL を必要に応じて解決し、yt-dlp の標準出力からメタ情報と進捗を読む。</p></div>
+              <div class="box dual" data-group="state"><strong>DownloadManager + JobBase</strong><small>Concurrency control</small><p>gallery / media のレーン別 Semaphore で同時実行を制御し、中止を伝播する。</p></div>
+              <div class="box dual" data-group="state"><strong>Stores + LibraryIndex</strong><small>Persistence &amp; deduplication</small><p>設定・履歴・キューを原子的に保存し、既存成果物の索引で重複を防ぐ。</p></div>
+            </div>
+            <div class="flow-arrow">→</div>
+            <div class="stack">
+              <div class="stack-title">Infrastructure</div>
+              <div class="box external" data-group="input"><strong>Web / HTML / APIs</strong><small>External</small><p>解決対象のページと API。</p></div>
+              <div class="box external" data-group="gallery"><strong>Net + ImagePipeline</strong><small>HTTP / Magick.NET</small><p>再試行付き取得、AVIF / WebP の復号、JPEG 化。</p></div>
+              <div class="box external" data-group="gallery"><strong>PdfBuilder + PageCache</strong><small>PdfSharp / files</small><p>PDF を一時出力から置換し、再試行用ページを保持。</p></div>
+              <div class="box external process" data-group="media"><strong>yt-dlp + ffmpeg</strong><small>Processes</small><p>動画・音声の抽出、結合、変換、メタデータ埋め込み。</p></div>
+              <div class="box external store" data-group="state"><strong>%APPDATA% + output dirs</strong><small>File system</small><p>JSON、暗号化 Cookie、PDF、動画、音声。</p></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="runtime">
+      <div class="section-head">
+        <div><div class="kicker">Dynamic view</div><h2>Runtime flow</h2></div>
+        <p>代表的な URL 追加から成果物確定までの流れです。入力解決は追加順を守る直列処理、ダウンロードは種類別の並列レーンとして動作します。</p>
+      </div>
+      <div class="panel">
+        <div class="panel-bar"><span>URL → 完了状態</span><span>失敗時は再試行可能なキュー状態を保持</span></div>
+        <div class="diagram">
+          <div class="runtime">
+            <div class="step"><b>01 · CAPTURE</b><strong>URL を受け取る</strong><p>貼り付け、複数行入力、またはクリップボード監視。</p></div>
+            <div class="step"><b>02 · RESOLVE</b><strong>SourceRef に正規化</strong><p>既知サイト、専用 Resolver、汎用 Web を判定。</p></div>
+            <div class="step"><b>03 · DEDUPE</b><strong>重複を確認</strong><p>実行中キュー、history.json、実ファイル索引を照合。</p></div>
+            <div class="step"><b>04 · SCHEDULE</b><strong>レーンへ投入</strong><p>GalleryJob または MediaJob を同時実行枠へ。</p></div>
+            <div class="step"><b>05 · PRODUCE</b><strong>取得・変換</strong><p>画像→JPEG→PDF、または yt-dlp→ffmpeg。</p></div>
+            <div class="step"><b>06 · COMMIT</b><strong>状態を確定</strong><p>成果物を索引へ追加し、履歴とキューを保存。</p></div>
+          </div>
+        </div>
+      </div>
+      <div class="facts" style="margin-top:14px">
+        <div class="fact"><div class="num">2</div><h3>独立した実行レーン</h3><p>ギャラリーとメディアで同時実行数を個別に制御し、片方の負荷がもう片方の枠を奪わない。</p></div>
+        <div class="fact"><div class="num">100 ms</div><h3>UI 更新ポンプ</h3><p>バックグラウンドの細かな進捗をまとめて UI へ流し、描画回数を抑える。</p></div>
+        <div class="fact"><div class="num">3 + 1</div><h3>重複走査の保存先</h3><p>PDF・動画・音声の各保存先に、利用者が追加した走査フォルダを加える。</p></div>
+      </div>
+    </section>
+
+    <section id="decisions">
+      <div class="section-head">
+        <div><div class="kicker">Architecture notes</div><h2>Key decisions</h2></div>
+        <p>実装から読み取れる、システムの品質特性を支える主な設計判断です。</p>
+      </div>
+      <div class="decision-grid">
+        <div class="decision"><h3>UI とダウンロードロジックを分離</h3><p>Dwnloader.exe は WinUI 固有処理を持ち、Dwnloader.Core.dll は UI フレームワークに依存せず取得・変換ロジックを担当します。</p></div>
+        <div class="decision"><h3>yt-dlp を子プロセスとして隔離</h3><p>重い抽出と異常終了を UI プロセスの内部状態から切り離し、中止時はプロセスツリー単位で終了します。</p></div>
+        <div class="decision"><h3>安全な永続化と復元</h3><p>JSON は一時ファイル経由で原子的に置換し、未完了キューは次回起動時に復元します。Cookie は DPAPI で保護します。</p></div>
+        <div class="decision"><h3>履歴だけに頼らない重複防止</h3><p>history.json と保存済みファイルの双方を照合し、履歴消失や別環境由来の成果物にも対応します。</p></div>
+        <div class="decision"><h3>再試行可能なギャラリーパイプライン</h3><p>ページキャッシュと PDF の一時出力を使い、途中失敗で既存成果物を壊さず、取得済みページを再利用します。</p></div>
+        <div class="decision"><h3>適用は利用者の明示操作</h3><p>更新の確認・取得と適用を分離し、実行中ジョブがある場合は再起動を伴う更新適用を避けます。</p></div>
+      </div>
+    </section>
+
+    <section id="sources">
+      <div class="section-head">
+        <div><div class="kicker">Traceability</div><h2>Source map</h2></div>
+        <p>このモデルは次の実装ファイルを主な根拠に作成しています。図はクラス図ではなく、責務と実行時境界を要約したものです。</p>
+      </div>
+      <div class="source-list">
+        <div class="source"><code>Dwnloader/App.xaml.cs</code><span>Composition root、起動・終了、単一起動、主要サービス生成</span></div>
+        <div class="source"><code>Dwnloader/Session.cs</code><span>入力解決、状態、キュー、UI 更新、ジョブ生成</span></div>
+        <div class="source"><code>Dwnloader.Core/Sites/*</code><span>SiteAdapter、サイト別解析、専用 Resolver</span></div>
+        <div class="source"><code>Dwnloader.Core/Jobs/*</code><span>レーン制御、GalleryJob、MediaJob、変換と PDF</span></div>
+        <div class="source"><code>Dwnloader.Core/Core/Stores.cs</code><span>履歴と未完了キューの永続化</span></div>
+        <div class="source"><code>Dwnloader.Core/Core/LibraryIndex.cs</code><span>保存済みファイル索引と重複判定</span></div>
+        <div class="source"><code>Dwnloader.Core/Core/JsonStore.cs</code><span>AppData パスと原子的 JSON 書き込み</span></div>
+        <div class="source"><code>Dwnloader.Core/UpdateService.cs</code><span>Velopack / GitHub Releases による更新</span></div>
+      </div>
+    </section>
+  </main>
+
+  <footer><div class="shell">Dwnldr C4 Architecture · implementation-derived documentation <span class="print-note">· Printed from docs/c4-architecture.html</span></div></footer>
+  <script>
+    const grid = document.querySelector('.component-grid');
+    document.querySelectorAll('.tab').forEach(button => {
+      button.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(item => item.setAttribute('aria-selected', 'false'));
+        button.setAttribute('aria-selected', 'true');
+        grid.dataset.focus = button.dataset.focus;
+      });
+    });
+  </script>
+</body>
+</html>

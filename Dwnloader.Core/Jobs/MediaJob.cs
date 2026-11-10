@@ -78,6 +78,10 @@ public sealed partial class MediaJob : JobBase
     private bool _allow85PoUnsafeExt;
     private string _gofileToken = "";
     private readonly List<string> _errorLines = new();
+    private bool _drmOnly;
+
+    private const string DrmMessage =
+        "この動画は DRM で保護されているため保存できません";
 
     /// <summary>
     /// yt-dlp へ実際に渡すURL。既定は貼られたURLそのままだが、monsnode の
@@ -154,11 +158,11 @@ public sealed partial class MediaJob : JobBase
 
             if (proc.ExitCode != 0)
             {
-                var message = _errorLines.Count > 0
+                var message = _drmOnly ? DrmMessage : _errorLines.Count > 0
                     ? _errorLines[^1]
                     : $"yt-dlp が異常終了しました (コード {proc.ExitCode})";
                 Log("error", $"{Reference.Url}: {message}");
-                Finish(false, "", message);
+                Finish(false, "", message, permanent: _drmOnly);
                 return;
             }
 
@@ -673,6 +677,12 @@ public sealed partial class MediaJob : JobBase
     {
         var text = CleanMessage(line);
         if (text.Length == 0) return;
+
+        // 映像・音声が一つもなく、サムネイルだけが列挙された場合に限る。
+        // 一部の形式だけが DRM という警告では、取得可能な形式を残す。
+        if (text.Contains("drm protected and only images are available for download",
+                          StringComparison.OrdinalIgnoreCase))
+            _drmOnly = true;
 
         if (line.Contains("ERROR", StringComparison.OrdinalIgnoreCase))
         {

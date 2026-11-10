@@ -359,6 +359,18 @@ public partial class MainWindow : Window
         if (EntryOf(sender) is { } entry) _session?.Remove(entry.JobId);
     }
 
+    private void RemoveSelected_Click(object sender, RoutedEventArgs e) => RemoveSelected();
+
+    private void EntryList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        RemoveSelectedBtn.IsEnabled = EntryList.SelectedItems.Count > 0;
+    }
+
+    private void RemoveSelected()
+    {
+        _session?.RemoveMany(EntryList.SelectedItems.Cast<EntryVm>().ToList());
+    }
+
     private void SwapKind_Click(object sender, RoutedEventArgs e)
     {
         if (EntryOf(sender) is not { } entry) return;
@@ -379,7 +391,7 @@ public partial class MainWindow : Window
 
         if (e.Key == VirtualKey.Delete)
         {
-            _session.RemoveMany(EntryList.SelectedItems.Cast<EntryVm>().ToList());
+            RemoveSelected();
             e.Handled = true;
         }
         else if (e.Key == VirtualKey.Enter && EntryList.SelectedItem is EntryVm entry)
