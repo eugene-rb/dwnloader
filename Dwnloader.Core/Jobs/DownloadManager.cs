@@ -18,69 +18,88 @@ public sealed class DownloadManager : IDisposable
     public const string LaneMedia = "media";
 
     private readonly object _gate = new();
-    private readonly Dictionary<string, SemaphoreSlim> _lanes = new();
-    private readonly Dictionary<string, int> _limits = new();
+    private sealed class Lane(int limit)
+    {
+        public int Limit = limit;
+        public int Running;
+        public LinkedList<PendingJob> Waiting { get; } = new();
+    }
+
+    private sealed class PendingJob(JobBase job)
+    {
+        public JobBase Job { get; } = job;
+        public TaskCompletionSource Completion { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public LinkedListNode<PendingJob>? QueueNode;
+    }
+
+    private readonly Dictionary<string, Lane> _lanes = new();
+    private readonly Dictionary<string, PendingJob> _pending = new();
+    private readonly Dictionary<string, PendingJob> _nodes = new();
     private readonly ConcurrentDictionary<string, JobBase> _jobs = new();
-    private readonly CancellationTokenSource _shutdown = new();
+    private bool _stopping;
 
     public DownloadManager(IReadOnlyDictionary<string, int> lanes)
     {
         foreach (var (name, count) in lanes)
         {
-            int n = Math.Max(1, count);
-            _limits[name] = n;
-            _lanes[name] = new SemaphoreSlim(n, n);
+            _lanes[name] = new Lane(Math.Max(1, count));
         }
     }
 
     /// <summary>
     /// ジョブを投入する。戻り値の Task は「順番待ちを含めて終わるまで」。
-    /// 待っている間もスレッドを占有しないので、何百件積んでも枯渇しない。
+    /// 待機中はキューの要素だけを保持し、実行枠の数だけ Task を起動する。
     /// </summary>
     public Task SubmitAsync(JobBase job, string lane)
     {
-        _jobs[job.JobId] = job;
-        return Task.Run(() => RunAsync(job, lane));
-    }
-
-    private async Task RunAsync(JobBase job, string lane)
-    {
-        SemaphoreSlim slot;
+        var node = new PendingJob(job);
         lock (_gate)
         {
-            if (!_lanes.TryGetValue(lane, out var found))
-            {
-                found = new SemaphoreSlim(2, 2);
-                _lanes[lane] = found;
-                _limits[lane] = 2;
-            }
-            slot = found;
+            if (_stopping) throw new ObjectDisposedException(nameof(DownloadManager));
+            _jobs[job.JobId] = job;
+            _nodes[job.JobId] = node;
+            if (!_lanes.TryGetValue(lane, out var state))
+                _lanes[lane] = state = new Lane(2);
+            node.QueueNode = state.Waiting.AddLast(node);
+            _pending[job.JobId] = node;
+            StartReady(state);
         }
+        return node.Completion.Task;
+    }
 
+    /// <summary>呼び出し元は _gate を保持する。</summary>
+    private void StartReady(Lane lane)
+    {
+        while (!_stopping && lane.Running < lane.Limit && lane.Waiting.Count > 0)
+        {
+            var node = lane.Waiting.First!.Value;
+            lane.Waiting.RemoveFirst();
+            node.QueueNode = null;
+            _pending.Remove(node.Job.JobId);
+            lane.Running++;
+            _ = Task.Run(() => RunAsync(node, lane));
+        }
+    }
+
+    private async Task RunAsync(PendingJob node, Lane lane)
+    {
         try
         {
-            // 枠が空くまで待つ。中止されたら待機ごと打ち切る。
-            using var linked = CancellationTokenSource.CreateLinkedTokenSource(
-                job.Token, _shutdown.Token);
-            await slot.WaitAsync(linked.Token).ConfigureAwait(false);
+            await node.Job.RunAsync().ConfigureAwait(false);
+            node.Completion.TrySetResult();
         }
-        catch (OperationCanceledException)
+        catch (Exception e)
         {
-            // 走り出す前に中止された。ジョブ自身に終了を知らせて片付ける。
-            job.Cancel();
-            await job.RunAsync().ConfigureAwait(false);
-            return;
-        }
-
-        try
-        {
-            await job.RunAsync().ConfigureAwait(false);
+            node.Completion.TrySetException(e);
         }
         finally
         {
-            // 同時実行数を変えると別のセマフォに差し替わるが、解放は
-            // 自分が取った方へ返す（取った数と返す数を一致させる）。
-            slot.Release();
+            lock (_gate)
+            {
+                lane.Running--;
+                StartReady(lane);
+            }
         }
     }
 
@@ -89,32 +108,56 @@ public sealed class DownloadManager : IDisposable
     public bool Cancel(string jobId)
     {
         if (!_jobs.TryGetValue(jobId, out var job)) return false;
+        PendingJob? queued = null;
+        lock (_gate)
+        {
+            if (_pending.Remove(jobId, out var node))
+            {
+                if (node.QueueNode?.List is { } list)
+                    list.Remove(node.QueueNode);
+                node.QueueNode = null;
+                queued = node;
+            }
+        }
         job.Cancel();
+        if (queued is not null)
+        {
+            queued.Job.CancelBeforeStart();
+            queued.Completion.TrySetResult();
+        }
         return true;
     }
 
     public void CancelAll()
     {
-        foreach (var job in _jobs.Values) job.Cancel();
+        foreach (var id in _jobs.Keys) Cancel(id);
     }
 
     public void Forget(string jobId)
     {
-        if (_jobs.TryRemove(jobId, out var job)) job.DisposeCts();
+        if (!_jobs.TryRemove(jobId, out var job)) return;
+        PendingJob? node;
+        lock (_gate) _nodes.Remove(jobId, out node);
+        if (node is null || node.Completion.Task.IsCompleted)
+            job.DisposeCts();
+        else
+            _ = node.Completion.Task.ContinueWith(_ => job.DisposeCts(),
+                TaskContinuationOptions.ExecuteSynchronously);
     }
 
     /// <summary>
-    /// 同時実行数を変える。走行中のジョブは今の枠のまま流し切らせ、
-    /// これから走る分だけ新しい枠を使う。
+    /// 同時実行数を変える。縮小時は実行中のジョブを止めず、空き枠が
+    /// 生じるまで次のジョブを待たせる。
     /// </summary>
     public void SetWorkers(string lane, int count)
     {
         count = Math.Max(1, count);
         lock (_gate)
         {
-            if (_limits.GetValueOrDefault(lane) == count) return;
-            _limits[lane] = count;
-            _lanes[lane] = new SemaphoreSlim(count, count);
+            if (!_lanes.TryGetValue(lane, out var state))
+                _lanes[lane] = state = new Lane(count);
+            state.Limit = count;
+            StartReady(state);
         }
     }
 
@@ -125,19 +168,13 @@ public sealed class DownloadManager : IDisposable
     /// </summary>
     public void Shutdown()
     {
+        lock (_gate) _stopping = true;
         CancelAll();
-        try { _shutdown.Cancel(); } catch (ObjectDisposedException) { }
     }
 
     public void Dispose()
     {
         Shutdown();
-        try { _shutdown.Dispose(); } catch (ObjectDisposedException) { }
-        lock (_gate)
-        {
-            foreach (var s in _lanes.Values) s.Dispose();
-            _lanes.Clear();
-        }
     }
 }
 

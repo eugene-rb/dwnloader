@@ -86,7 +86,7 @@ public sealed class SettingsData
     [JsonPropertyName("audio_format")] public string AudioFormat { get; set; } = "mp3";
     [JsonPropertyName("audio_bitrate")] public int AudioBitrate { get; set; } = 192;
     /// <summary>同時ダウンロード数（yt-dlp）。</summary>
-    [JsonPropertyName("video_workers")] public int VideoWorkers { get; set; } = 2;
+    [JsonPropertyName("video_workers")] public int VideoWorkers { get; set; } = 4;
 
     /// <summary>yt-dlp の実行ファイル。空なら自動検出。</summary>
     [JsonPropertyName("ytdlp_path")] public string YtDlpPath { get; set; } = "";

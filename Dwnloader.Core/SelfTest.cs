@@ -2,6 +2,7 @@
 using System.Text;
 using Dwnloader.Auth;
 using Dwnloader.Core;
+using Dwnloader.Jobs;
 using Dwnloader.Sites;
 
 namespace Dwnloader;
@@ -44,6 +45,7 @@ public static class SelfTest
         TestMonsnodeResolver();
         TestDohSettings();
         TestSourceKeys();
+        TestDownloadManager();
         TestLibraryIndex();
         TestCookieStore();
 
@@ -265,6 +267,15 @@ public static class SelfTest
 
         var tw = UrlDetect.MatchKnownSite("https://twitter.com/someone/status/1234567890");
         Check("twitter.com も同じIDになる", tw?.Gid, x?.Gid);
+        Check("X の i/web 形式も同じIDになる",
+              UrlDetect.MatchKnownSite("https://x.com/i/web/status/1234567890")?.Gid,
+              x?.Gid);
+        Check("X の m サブドメインも同じIDになる",
+              UrlDetect.MatchKnownSite("https://m.x.com/someone/status/1234567890")?.Gid,
+              x?.Gid);
+        Check("旧 statuses 形式も同じIDになる",
+              UrlDetect.MatchKnownSite("https://twitter.com/statuses/1234567890")?.Gid,
+              x?.Gid);
 
         var nico = UrlDetect.MatchKnownSite("https://www.nicovideo.jp/watch/sm9");
         Check("ニコニコを判定", nico?.Site, "niconico");
@@ -844,6 +855,109 @@ public static class SelfTest
               StatusText.ShouldPersist(JobStatus.Done), false);
         Check("ステータスの分類 (Partial は保存する)",
               StatusText.ShouldPersist(JobStatus.Partial), true);
+    }
+
+    private sealed class WaitingJob(string id, Task release, Action started, Action finished,
+                                    JobEvents? events = null)
+        : JobBase(id, new SourceRef("test", id, "https://example.com/", MediaKind.Video),
+                  new SettingsData(), events ?? new JobEvents())
+    {
+        public override async Task RunAsync()
+        {
+            started();
+            try { await release.ConfigureAwait(false); }
+            finally { finished(); }
+        }
+    }
+
+    private static void TestDownloadManager()
+    {
+        Section("大量の並列ダウンロードキュー");
+        using var manager = new DownloadManager(new Dictionary<string, int>
+        {
+            [DownloadManager.LaneMedia] = 4,
+        });
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        int active = 0, maximum = 0, started = 0, finished = 0;
+        void Enter()
+        {
+            var count = Interlocked.Increment(ref active);
+            Interlocked.Increment(ref started);
+            int old;
+            do { old = Volatile.Read(ref maximum); }
+            while (count > old && Interlocked.CompareExchange(ref maximum, count, old) != old);
+        }
+        void Leave()
+        {
+            Interlocked.Decrement(ref active);
+            Interlocked.Increment(ref finished);
+        }
+
+        const int total = 1000;
+        var tasks = Enumerable.Range(0, total).Select(i =>
+            manager.SubmitAsync(new WaitingJob("bulk-" + i, release.Task, Enter, Leave),
+                                DownloadManager.LaneMedia)).ToArray();
+        Check("待機1000件でも最初は4件だけ開始",
+              SpinWait.SpinUntil(() => Volatile.Read(ref started) == 4, 5000), true);
+        Check("最初の同時実行数", Volatile.Read(ref active), 4);
+        manager.SetWorkers(DownloadManager.LaneMedia, 8);
+        Check("設定変更で8件まで開始",
+              SpinWait.SpinUntil(() => Volatile.Read(ref started) == 8, 5000), true);
+        release.SetResult();
+        Check("1000件すべて完了", Task.WaitAll(tasks, 30000), true);
+        Check("同時実行の上限", maximum <= 8, true);
+        Check("実行した件数", finished, total);
+
+        using var cancelManager = new DownloadManager(new Dictionary<string, int>
+        {
+            [DownloadManager.LaneMedia] = 1,
+        });
+        var hold = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        int entered = 0, canceled = 0;
+        var first = cancelManager.SubmitAsync(
+            new WaitingJob("first", hold.Task, () => Interlocked.Increment(ref entered), () => { }),
+            DownloadManager.LaneMedia);
+        Check("先頭ジョブの開始", SpinWait.SpinUntil(() => entered == 1, 5000), true);
+        var second = cancelManager.SubmitAsync(
+            new WaitingJob("second", hold.Task, () => Interlocked.Increment(ref entered),
+                           () => { }, new JobEvents
+                           {
+                               Finished = (_, result) =>
+                               {
+                                   if (!result.Ok && result.Error == "キャンセルしました")
+                                       Interlocked.Increment(ref canceled);
+                               },
+                           }),
+            DownloadManager.LaneMedia);
+        Check("待機中のジョブをキャンセル", cancelManager.Cancel("second"), true);
+        Check("待機中でもすぐに完了通知", second.IsCompleted && canceled == 1, true);
+        Check("キャンセルしたジョブは実行しない", entered, 1);
+        hold.SetResult();
+        Check("先頭ジョブは完了", first.Wait(5000), true);
+
+        using var resizeManager = new DownloadManager(new Dictionary<string, int>
+        {
+            [DownloadManager.LaneMedia] = 2,
+        });
+        var gates = Enumerable.Range(0, 3)
+            .Select(_ => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously))
+            .ToArray();
+        int runningAfterResize = 0;
+        var resizeTasks = Enumerable.Range(0, 3).Select(i => resizeManager.SubmitAsync(
+            new WaitingJob("resize-" + i, gates[i].Task,
+                           () => Interlocked.Increment(ref runningAfterResize), () => { }),
+            DownloadManager.LaneMedia)).ToArray();
+        Check("縮小前に2件を開始",
+              SpinWait.SpinUntil(() => Volatile.Read(ref runningAfterResize) == 2, 5000), true);
+        resizeManager.SetWorkers(DownloadManager.LaneMedia, 1);
+        gates[0].SetResult();
+        Check("先頭の終了", resizeTasks[0].Wait(5000), true);
+        Check("縮小後は空きができるまで次を開始しない", runningAfterResize, 2);
+        gates[1].SetResult();
+        Check("残りの終了後に次を開始",
+              SpinWait.SpinUntil(() => Volatile.Read(ref runningAfterResize) == 3, 5000), true);
+        gates[2].SetResult();
+        Check("縮小後のジョブも完了", Task.WaitAll(resizeTasks, 5000), true);
     }
 
     // ------------------------------------------------------------ 内部の再現

@@ -67,6 +67,12 @@ public abstract class JobBase
 
     public abstract Task RunAsync();
 
+    internal void CancelBeforeStart()
+    {
+        SetStatus(JobStatus.Canceled);
+        Finish(false, "", "キャンセルしました");
+    }
+
     // ------------------------------------------------------------ 通知の小道具
 
     protected void SetStatus(JobStatus status, string message = "")
