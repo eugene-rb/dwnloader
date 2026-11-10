@@ -24,6 +24,10 @@ public static partial class ViloloResolver
         "cdn.twimg-media.com",
         "video2.twimg-image.com",
         "video.twimgx.com",
+        "tweetjp.com",
+        "www.tweetjp.com",
+        "gofile.foo",
+        "www.gofile.foo",
     };
 
     private static readonly ConcurrentDictionary<string, string> ApiOrigins =
@@ -205,7 +209,9 @@ public static partial class ViloloResolver
 
         // 配信先はリリースごとに変わり得るため、ページが読み込む JS から取得する。
         var page = await GetTextAsync(client, reference.PageUrl, settings, ct).ConfigureAwait(false);
-        var script = ModuleScriptRegex().Match(page).Groups["src"].Value;
+        var script = AppScriptRegex().Match(page).Groups["src"].Value;
+        if (script.Length == 0)
+            script = ModuleScriptRegex().Match(page).Groups["src"].Value;
         if (script.Length > 0)
         {
             var scriptUrl = new Uri(new Uri(reference.PageUrl), script).AbsoluteUri;
@@ -311,11 +317,15 @@ public static partial class ViloloResolver
     [GeneratedRegex("^[A-Za-z0-9_-]{2,80}$", RegexOptions.CultureInvariant)]
     private static partial Regex ShortLinkRegex();
 
+    [GeneratedRegex("<script[^>]+src=[\\\"'](?<src>[^\\\"']*/assets/app-[^\\\"']+\\.js)",
+                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex AppScriptRegex();
+
     [GeneratedRegex("<script[^>]+type=[\\\"']module[\\\"'][^>]+src=[\\\"'](?<src>[^\\\"']+)",
                     RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex ModuleScriptRegex();
 
-    [GeneratedRegex(@"return\s+\w+\(`(?<origin>https://[A-Za-z0-9.-]+)`\s*,globalThis\.window",
+    [GeneratedRegex("(?:return\\s+\\w+\\(`|String\\(\")(?<origin>https://[A-Za-z0-9.-]+)(?:`\\s*,globalThis\\.window|\"\\))",
                     RegexOptions.CultureInvariant)]
     private static partial Regex ApiOriginRegex();
 }

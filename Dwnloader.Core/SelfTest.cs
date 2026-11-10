@@ -361,12 +361,24 @@ public static class SelfTest
         Check("video.twimgx.com を展開器でも判定",
               ViloloResolver.Match("https://video.twimgx.com/h9JRT7")?.ShortLink,
               "h9JRT7");
+        var tweetjp = UrlDetect.MatchKnownSite("https://tweetjp.com/O0LzLe");
+        Check("tweetjp.com の共有動画を判定", tweetjp?.Site, "vilolo");
+        Check("tweetjp.com の短縮ID", tweetjp?.Gid, "O0LzLe");
+        Check("tweetjp.com を展開器でも判定",
+              ViloloResolver.Match("https://tweetjp.com/O0LzLe")?.ShortLink, "O0LzLe");
+        var gofileFoo = UrlDetect.MatchKnownSite("https://gofile.foo/zUqHi7");
+        Check("gofile.foo の共有動画を判定", gofileFoo?.Site, "vilolo");
+        Check("gofile.foo の短縮ID", gofileFoo?.Gid, "zUqHi7");
+        Check("gofile.foo を展開器でも判定",
+              ViloloResolver.Match("https://gofile.foo/zUqHi7")?.ShortLink, "zUqHi7");
 
         var gofile = UrlDetect.MatchKnownSite("https://gofile.io/d/325rV8gZ");
         Check("gofile.io の共有フォルダーを判定", gofile?.Site, "gofile");
         Check("gofile.io の共有コード", gofile?.Gid, "325rV8gZ");
         Check("gofile.io のトップページは拾わない",
               UrlDetect.MatchKnownSite("https://gofile.io/"), null);
+        Check("指定されたGoFile共有コードを展開器で判定",
+              GoFileResolver.Match("https://gofile.io/d/C48hOMWk")?.Code, "C48hOMWk");
         Check("GoFile Webトークン生成",
               GoFileResolver.WebsiteTokenForTest("guest-token", 1728000000),
               "e1369b71d336b05afe9d514202c8c88580954f60dfdc193765bc4bcc2e3eaad3");
